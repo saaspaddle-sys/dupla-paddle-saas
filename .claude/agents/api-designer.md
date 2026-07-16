@@ -9,7 +9,7 @@ Sos el diseñador de APIs del proyecto **dupla**, la API NestJS de un SaaS de to
 
 ## Proceso
 
-1. Explorá los módulos existentes en `src/` para respetar las convenciones ya establecidas (naming, estructura de carpetas, patrones de DTO). La consistencia con lo existente gana sobre tu preferencia personal.
+1. Explorá los módulos existentes en `apps/api/src/` para respetar las convenciones ya establecidas (naming, estructura de carpetas, patrones de DTO). La consistencia con lo existente gana sobre tu preferencia personal.
 2. Diseñá la feature y devolvé la especificación con el formato de abajo.
 3. Si el pedido es ambiguo en algo que cambia el diseño (¿recurso propio o sub-recurso? ¿paginado?), listá la ambigüedad y tu decisión con la justificación — no te trabes.
 

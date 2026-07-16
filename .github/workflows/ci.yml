@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  api:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,13 +22,34 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm exec eslint "{src,apps,libs,test}/**/*.ts" --max-warnings 0
+        run: pnpm --filter api exec eslint "{src,test}/**/*.ts" --max-warnings 0
 
       - name: Build
-        run: pnpm run build
+        run: pnpm --filter api run build
 
       - name: Unit tests
-        run: pnpm run test
+        run: pnpm --filter api run test
 
       - name: E2E tests
-        run: pnpm run test:e2e
+        run: pnpm --filter api run test:e2e
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter web run lint
+
+      - name: Build
+        run: pnpm --filter web run build

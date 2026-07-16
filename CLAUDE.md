@@ -4,44 +4,55 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product context
 
-dupla is the API for a SaaS where paddle clubs run tournaments: auto-generated brackets, results tracking, and a free public (no-login) view for players. Clubs are the paying tenant (their staff are the authenticated users); player profiles are platform-global, linked to clubs only through tournament inscriptions. Before designing or implementing a feature, read `docs/product-brief.md` (scope and phasing) and `docs/decisions.md` (technical decisions: PostgreSQL + Prisma, Passport + JWT auth, club-as-tenant).
+dupla is a SaaS where paddle clubs run tournaments: auto-generated brackets, results tracking, and a free public (no-login) view for players. Clubs are the paying tenant (their staff are the authenticated users); player profiles are platform-global, linked to clubs only through tournament inscriptions. Before designing or implementing a feature, read `docs/product-brief.md` (scope and phasing) and `docs/decisions.md` (technical decisions: PostgreSQL + Prisma, Passport + JWT auth, club-as-tenant, monorepo).
+
+## Monorepo layout
+
+pnpm workspace with a single lockfile at the root. Packages live in `apps/*`:
+
+- `apps/api` — NestJS backend (port 3000)
+- `apps/web` — Next.js 16 frontend, App Router + Tailwind v4 (port 3001 in dev). **Read `apps/web/AGENTS.md` before writing Next.js code** — Next 16 conventions differ from older versions.
+
+Run everything from the repo root with `pnpm --filter <package>`, or use the root shortcuts below.
 
 ## Package manager
 
-Use **pnpm** (not npm/yarn) — the repo has `pnpm-lock.yaml` and a `pnpm-workspace.yaml`. Install with `pnpm install`.
+Use **pnpm** (not npm/yarn) — `packageManager` is pinned in the root `package.json`. Install with `pnpm install` from the root; never install inside a package with npm/yarn.
 
 ## Commands
 
 ```bash
-pnpm run start:dev      # run with watch/hot-reload (primary dev loop)
-pnpm run start:debug    # watch + Node inspector
-pnpm run start:prod     # run compiled output (node dist/main)
-pnpm run build          # nest build -> dist/
-pnpm run lint           # eslint --fix over {src,apps,libs,test}
-pnpm run format         # prettier --write over src/ and test/
+# Root shortcuts
+pnpm run start:dev      # API with watch/hot-reload (primary dev loop)
+pnpm run dev:web        # Next.js dev server
+pnpm run build          # build every package
+pnpm run lint           # lint every package
+pnpm run test           # unit tests in every package that defines them
+pnpm run test:e2e       # API e2e tests
 
-pnpm run test           # unit tests (Jest)
-pnpm run test:watch     # unit tests in watch mode
-pnpm run test:cov       # unit tests with coverage -> coverage/
-pnpm run test:e2e       # e2e tests (separate config: test/jest-e2e.json)
+# Per package
+pnpm --filter api run start:debug   # API with Node inspector
+pnpm --filter web run build         # production build of the frontend
 
-# Run a single unit test file or by name:
-pnpm run test -- src/app.controller.spec.ts
-pnpm run test -- -t "should return"
+# Run a single API unit test file or by name:
+pnpm --filter api run test -- src/app.controller.spec.ts
+pnpm --filter api run test -- -t "should return"
 ```
 
-## Testing layout
+## Testing layout (api)
 
-Two distinct Jest setups:
-- **Unit tests**: `*.spec.ts` colocated next to source in `src/`. Config is inline in `package.json` (`rootDir: src`, `testRegex: .*\.spec\.ts$`).
-- **E2E tests**: `*.e2e-spec.ts` in `test/`, run via `test/jest-e2e.json` (`rootDir: .`). E2E boots the full Nest app with `@nestjs/testing` + supertest.
+Two distinct Jest setups inside `apps/api`:
+- **Unit tests**: `*.spec.ts` colocated next to source in `apps/api/src/`. Config is inline in `apps/api/package.json` (`rootDir: src`, `testRegex: .*\.spec\.ts$`).
+- **E2E tests**: `*.e2e-spec.ts` in `apps/api/test/`, run via `apps/api/test/jest-e2e.json` (`rootDir: .`). E2E boots the full Nest app with `@nestjs/testing` + supertest.
+
+`apps/web` has no test setup yet.
 
 ## Architecture
 
-Standard NestJS application. Entry point `src/main.ts` bootstraps `AppModule` and listens on `process.env.PORT ?? 3000`. Composition is module-based: providers (`@Injectable` services) are declared in a module's `providers` and injected via constructor DI; HTTP handlers live in `@Controller` classes registered in a module's `controllers`.
+`apps/api` is a standard NestJS application. Entry point `src/main.ts` bootstraps `AppModule` and listens on `process.env.PORT ?? 3000`. Composition is module-based: providers (`@Injectable` services) are declared in a module's `providers` and injected via constructor DI; HTTP handlers live in `@Controller` classes registered in a module's `controllers`. As features are added, create a feature module per domain and import it into `AppModule`.
 
-This is currently a bare scaffold — a single root `AppModule` wiring `AppController` + `AppService`. As features are added, create a feature module per domain (`nest g module <name>`, `nest g controller <name>`, `nest g service <name>`) and import it into `AppModule`.
+`apps/web` is a fresh create-next-app scaffold (App Router, `src/` dir, Tailwind v4, Turbopack).
 
-## TypeScript notes
+## TypeScript notes (api)
 
-`tsconfig.json` uses `module`/`moduleResolution: nodenext`. `strictNullChecks` is on but `noImplicitAny` and `strictBindCallApply` are off. Decorator metadata is enabled (required for Nest DI).
+`apps/api/tsconfig.json` uses `module`/`moduleResolution: nodenext`. `strictNullChecks` is on but `noImplicitAny` and `strictBindCallApply` are off. Decorator metadata is enabled (required for Nest DI).
