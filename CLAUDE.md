@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Product context
+
+dupla is the API for a SaaS where paddle clubs run tournaments: auto-generated brackets, results tracking, and a free public (no-login) view for players. Clubs are the paying tenant (their staff are the authenticated users); player profiles are platform-global, linked to clubs only through tournament inscriptions. Before designing or implementing a feature, read `docs/product-brief.md` (scope and phasing) and `docs/decisions.md` (technical decisions: PostgreSQL + Prisma, Passport + JWT auth, club-as-tenant).
+
 ## Package manager
 
 Use **pnpm** (not npm/yarn) — the repo has `pnpm-lock.yaml` and a `pnpm-workspace.yaml`. Install with `pnpm install`.
