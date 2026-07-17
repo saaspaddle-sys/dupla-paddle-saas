@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 dupla is a SaaS where paddle clubs run tournaments: auto-generated brackets, results tracking, and a free public (no-login) view for players. Clubs are the paying tenant (their staff are the authenticated users); player profiles are platform-global, linked to clubs only through tournament inscriptions. Before designing or implementing a feature, read `docs/product-brief.md` (scope and phasing) and `docs/decisions.md` (technical decisions: PostgreSQL + Prisma, Passport + JWT auth, club-as-tenant, monorepo).
 
+## Team workflow
+
+Branch per task (`feat/`, `fix/`, `chore/`), PR into protected `main` with squash merge, CI checks `api` and `web` must be green. Never commit directly to `main`. API + frontend changes for the same feature go in one PR. New technical decisions get an entry in `docs/decisions.md` in the same PR. Full guide: `docs/workflow.md`.
+
 ## Monorepo layout
 
 pnpm workspace with a single lockfile at the root. Packages live in `apps/*`:

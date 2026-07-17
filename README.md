@@ -7,7 +7,7 @@ Monorepo pnpm:
 - `apps/api` — backend NestJS (puerto 3000)
 - `apps/web` — frontend Next.js (puerto 3001 en dev)
 
-Documentación: [`docs/product-brief.md`](docs/product-brief.md) (producto y alcance) · [`docs/decisions.md`](docs/decisions.md) (decisiones técnicas).
+Documentación: [`docs/product-brief.md`](docs/product-brief.md) (producto y alcance) · [`docs/decisions.md`](docs/decisions.md) (decisiones técnicas) · [`docs/workflow.md`](docs/workflow.md) (cómo trabajamos).
 
 ## Desarrollo
 
