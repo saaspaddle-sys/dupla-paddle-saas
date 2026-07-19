@@ -1,0 +1,1 @@
+/*Diseño limpio para las pantallas de auth*/
