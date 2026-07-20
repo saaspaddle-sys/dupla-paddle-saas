@@ -21,7 +21,7 @@ Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no impl
 
 ## Workflow del equipo
 
-Una branch por tarea (`feat/`, `fix/`, `chore/`), PR hacia `main` protegido con squash merge, los checks de CI `api` y `web` tienen que estar verdes. Nunca commitear directo a `main`. Los cambios de API + frontend de una misma feature van en un solo PR. Las decisiones técnicas nuevas se agregan a `docs/decisions.md` en el mismo PR. Guía completa: `docs/workflow.md`.
+Una branch por tarea (`feat/`, `fix/`, `chore/`), PR hacia `main` protegido con squash merge, los checks de CI `api`, `web` y `format` tienen que estar verdes. Nunca commitear directo a `main`. Los cambios de API + frontend de una misma feature van en un solo PR. Las decisiones técnicas nuevas se agregan a `docs/decisions.md` en el mismo PR. Guía completa: `docs/workflow.md`.
 
 `.claude/agents/` tiene los agentes especializados del equipo, calibrados para este stack: `api-designer` (contratos de endpoints, correrlo antes de implementar una feature), `db-architect` (schema y migraciones), `test-engineer`, `code-reviewer`, `debugger`.
 
@@ -53,9 +53,10 @@ Cada uno es un wrapper fino de `pnpm -r` / `pnpm --filter`; los comandos especí
 
 ## CI
 
-`.github/workflows/ci.yml` corre dos jobs en cada PR, ambos en Node 24 con `pnpm install --frozen-lockfile`:
+`.github/workflows/ci.yml` corre tres jobs en cada PR, todos en Node 24 con `pnpm install --frozen-lockfile`:
 
 - **api** — lint, build, tests unitarios, tests e2e.
 - **web** — lint, build.
+- **format** — `prettier --check` sobre todo el repo (config en `.prettierrc` raíz; `apps/api` tiene el suyo, que gana por cercanía).
 
 El paso de lint de `api` **no** corre el script `lint` propio del paquete; ver `apps/api/AGENTS.md` para entender por qué un lint local limpio puede igual fallar en CI.

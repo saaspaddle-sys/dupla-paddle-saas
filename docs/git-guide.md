@@ -38,7 +38,7 @@ git commit
 
 `git add .` es cómodo hasta que te lleva un `.env`, un archivo de debug o medio `dist/` al commit. Mirá el `git status` primero.
 
-Para el mensaje, `git commit` sin `-m` te abre el editor y te deja escribir cuerpo, que es donde va el *por qué*:
+Para el mensaje, `git commit` sin `-m` te abre el editor y te deja escribir cuerpo, que es donde va el _por qué_:
 
 ```
 add automatic bracket generation
@@ -76,6 +76,8 @@ pnpm --filter web run lint
 pnpm run build
 pnpm run test
 pnpm --filter api run test:e2e
+
+pnpm run format:check   # si falla, `pnpm run format` lo arregla
 ```
 
 El lint de `api` es la trampa clásica: `pnpm run lint` local pasa con warnings y la CI falla con `--max-warnings 0`. El detalle está en [`apps/api/AGENTS.md`](../apps/api/AGENTS.md).
@@ -117,7 +119,7 @@ El PR se actualiza solo y la CI vuelve a correr. No hace falta cerrarlo ni abrir
 
 ### 8. Merge
 
-Con la aprobación puesta y los checks `api` y `web` en verde:
+Con la aprobación puesta y los checks `api`, `web` y `format` en verde:
 
 ```bash
 gh pr merge --squash
