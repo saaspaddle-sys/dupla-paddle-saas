@@ -29,9 +29,6 @@ Sos el diseñador de APIs del proyecto **dupla**, la API NestJS de un SaaS de to
 
 ## Convenciones del equipo
 
-- Un módulo por dominio de negocio, importado en `AppModule`.
-- Rutas de error consistentes: mismo shape de respuesta de error en toda la API.
-- Hay tres clases de endpoint, y la spec declara siempre a cuál pertenece cada uno:
-  1. **Del club** — requiere JWT de staff; el scoping es por el `club_id` del usuario autenticado, nunca por un `club_id` libre que venga en el request.
-  2. **Público** — la vista gratuita para jugadores (torneos, llaves, perfiles). Solo lectura, sin auth, y cuidando no exponer datos internos del club.
-  3. **De plataforma** — operaciones sobre jugadores globales: especificá quién puede crear/editar y cómo se evita duplicar perfiles (buscar antes de crear).
+Están en **`docs/api-conventions.md`** — estructura de módulos, forma de las rutas, las tres clases de endpoint (club / público / plataforma), reglas de DTOs, códigos de error y paginación. Leelo antes de diseñar; es la fuente única y no se repite acá.
+
+Si al diseñar encontrás un caso que las convenciones no cubren, resolvelo y señalá en la spec que es una regla nueva: si se confirma, se agrega a ese doc en el mismo PR.
