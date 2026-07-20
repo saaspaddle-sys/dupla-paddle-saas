@@ -2,6 +2,12 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-07-20 — Una sola rama de larga vida: `main`
+
+**Contexto**: se había creado una rama `develop` como punto de integración entre los dos devs. El repo ya usa `main` protegida como default y **squash merge** en todos los PRs, y el hosting está diferido — no hay deploy productivo.
+**Decisión**: no se usa una rama `develop` intermedia. `main` es la única rama de larga vida; las ramas de tarea (`feat/`, `fix/`, `chore/`) salen de `main` y vuelven a `main` por PR. La `develop` existente se borra (no tenía commits propios: `git diff main develop` daba vacío).
+**Consecuencias**: lo que habilita el trabajo en paralelo son las ramas cortas, el PR con CI y la aprobación cruzada — no la rama de integración, que sirve para separar "mergeado" de "deployado" y hoy no habría nada que separar. Además una rama de larga vida choca con el squash merge: el squash reescribe los SHAs, así que `develop` y `main` nunca comparten historia real y aparecen divergidas aunque el contenido sea idéntico (ya pasó con el PR #5/#6). Si en algún momento hace falta separar producción de desarrollo, se reevalúa junto con la estrategia de merge — la conversación va a ser squash vs. merge commits, no solo la rama. El ciclo operativo está en [git-guide.md](./git-guide.md).
+
 ## 2026-07-20 — `AGENTS.md` por paquete y convenciones en `docs/`
 
 **Contexto**: el equipo usa herramientas distintas (Claude Code y Cursor). El contexto del proyecto estaba en archivos `CLAUDE.md`, que solo lee una de las dos, y las convenciones de API vivían dentro de `.claude/agents/api-designer.md` — inalcanzables para el resto.
