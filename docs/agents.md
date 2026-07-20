@@ -14,13 +14,13 @@ El punto 3 es el único que controlás en el momento, y es donde se gana o se pi
 
 ## Los cinco agentes
 
-| Agente | Para qué | Toca código |
-|---|---|---|
-| `api-designer` | Contrato de una feature: módulo, endpoints, DTOs, errores | No — produce una spec |
-| `db-architect` | Schema, entidades, migraciones Prisma | Sí |
-| `test-engineer` | Escribir tests nuevos, dejar la suite verde | Solo archivos de test |
-| `debugger` | Bug con causa raíz desconocida | Sí |
-| `code-reviewer` | Revisar un diff antes del PR | No — solo lee y reporta |
+| Agente          | Para qué                                                  | Toca código             |
+| --------------- | --------------------------------------------------------- | ----------------------- |
+| `api-designer`  | Contrato de una feature: módulo, endpoints, DTOs, errores | No — produce una spec   |
+| `db-architect`  | Schema, entidades, migraciones Prisma                     | Sí                      |
+| `test-engineer` | Escribir tests nuevos, dejar la suite verde               | Solo archivos de test   |
+| `debugger`      | Bug con causa raíz desconocida                            | Sí                      |
+| `code-reviewer` | Revisar un diff antes del PR                              | No — solo lee y reporta |
 
 Dos consecuencias prácticas de esa última columna:
 
@@ -56,7 +56,7 @@ El orden está en `docs/workflow.md` y no lo repetimos acá. Lo que importa sobr
 
 - **`api-designer` va antes de escribir código, no después.** Su valor es que dos personas implementando features distintas produzcan APIs que se parezcan. Corrido después, es un comentario de estilo tardío.
 - **`code-reviewer` va antes de abrir el PR, con el trabajo ya commiteado** en tu rama — lee `git diff main...HEAD`. Si lo corrés con todo sin commitear el diff sale sucio y la revisión pierde precisión.
-- **`code-reviewer` no reemplaza el review humano.** Es al revés: le saca al humano el trabajo mecánico (DTOs sin validar, guards faltantes, `club_id` mal scopeado) para que use sus quince minutos en la única pregunta que la máquina no contesta bien: *¿es esta la solución correcta al problema?*
+- **`code-reviewer` no reemplaza el review humano.** Es al revés: le saca al humano el trabajo mecánico (DTOs sin validar, guards faltantes, `club_id` mal scopeado) para que use sus quince minutos en la única pregunta que la máquina no contesta bien: _¿es esta la solución correcta al problema?_
 - **Ante un bug, `debugger` primero.** El atajo de "ya sé qué es, lo arreglo directo" es el que produce fixes sobre el síntoma. Si de verdad ya sabés cuál es la causa, arreglalo y listo — pero entonces escribí el test de regresión igual.
 
 ## Lo que tenés que verificar vos

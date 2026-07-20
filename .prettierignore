@@ -1,0 +1,11 @@
+# Generado o instalado — no se formatea.
+node_modules/
+pnpm-lock.yaml
+
+# Artefactos de build.
+dist/
+.next/
+coverage/
+
+# Generado por Next.
+next-env.d.ts

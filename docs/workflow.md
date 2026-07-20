@@ -17,7 +17,7 @@ Este archivo tiene las **reglas**. Los **comandos** en orden — el ciclo comple
 - **Cambios API + frontend de la misma feature van juntos** en el mismo PR — esa es la ventaja del monorepo: el endpoint y la pantalla que lo consume se revisan y mergean como una unidad, sin ventanas donde el contrato está roto.
 - La descripción dice **qué** cambia, **por qué**, y **cómo probarlo**. Si implementa una spec de `api-designer`, pegala o linkeala.
 - **Regla de oro antes de abrir el PR**: pasale el agente `code-reviewer` al diff y resolvé los hallazgos. El review humano es para lo que la máquina no ve (¿es la solución correcta?), no para cazar DTOs sin validar.
-- **Al menos una aprobación** de otro miembro antes de mergear. El autor mergea su propio PR una vez aprobado y con los checks `api` y `web` en verde.
+- **Al menos una aprobación** de otro miembro antes de mergear. El autor mergea su propio PR una vez aprobado y con los checks `api`, `web` y `format` en verde.
 - Trabajo a medias que querés mostrar → **Draft PR**.
 - Merge con **squash**: un PR = un commit en `main`, con la historia limpia y revertible.
 

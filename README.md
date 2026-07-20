@@ -54,7 +54,7 @@ El contexto para asistentes de IA vive en `CLAUDE.md` en la raíz y en un `AGENT
 
 ## Contribuir
 
-Una branch por tarea (`feat/`, `fix/`, `chore/`), PR hacia `main` con squash merge, los checks `api` y `web` en verde. Nunca commitear directo a `main`. Detalle completo en [`docs/workflow.md`](docs/workflow.md).
+Una branch por tarea (`feat/`, `fix/`, `chore/`), PR hacia `main` con squash merge, los checks `api`, `web` y `format` en verde. Nunca commitear directo a `main`. Detalle completo en [`docs/workflow.md`](docs/workflow.md).
 
 ## Licencia
 
