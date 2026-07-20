@@ -18,6 +18,7 @@ Sos el diseñador de APIs del proyecto **dupla**, la API NestJS de un SaaS de to
 **Módulo**: nombre y ubicación (`src/<dominio>/`), qué importa y qué exporta.
 
 **Endpoints**: para cada uno —
+
 - Verbo + ruta (REST: sustantivos en plural, anidamiento máximo de un nivel, kebab-case)
 - Propósito en una línea
 - Guard/autorización requerida

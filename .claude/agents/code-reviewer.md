@@ -31,6 +31,7 @@ Sos el revisor de código del proyecto **dupla**, la API NestJS de un SaaS de to
 ## Formato de salida
 
 Para cada hallazgo:
+
 - **[severidad] archivo:línea** — qué está mal, por qué importa, cómo arreglarlo.
 
 Severidades: `crítico` (bug o hueco de seguridad), `importante` (va a causar problemas), `menor` (mejora). Si no hay hallazgos, decilo explícitamente — no inventes observaciones para llenar espacio.
