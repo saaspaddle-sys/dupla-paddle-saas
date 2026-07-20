@@ -1,65 +1,65 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Este archivo le da contexto a Claude Code (claude.ai/code) para trabajar en este repositorio.
 
-Repo-wide context (product, tenancy invariant, team workflow, monorepo rules, CI shape) lives in the root `CLAUDE.md` — it applies here too and is not repeated. This file covers only `apps/api`.
+El contexto que aplica a todo el repo (producto, invariante de tenancy, workflow del equipo, reglas del monorepo, forma de la CI) vive en el `CLAUDE.md` raíz — también aplica acá y no se repite. Este archivo cubre solo `apps/api`.
 
-## State of the code
+## Estado del código
 
-`src/` is the untouched NestJS scaffold: `AppModule` → `AppController`/`AppService` returning `"Hello World!"`, and `main.ts` doing nothing but `NestFactory.create` + `listen(process.env.PORT ?? 3000)`. Nothing in `docs/decisions.md` is built yet.
+`src/` es el scaffold intacto de NestJS: `AppModule` → `AppController`/`AppService` devolviendo `"Hello World!"`, y `main.ts` que no hace nada más que `NestFactory.create` + `listen(process.env.PORT ?? 3000)`. Nada de lo que está en `docs/decisions.md` está implementado todavía.
 
-Concretely, none of this exists — check before importing, and create it as part of the feature that first needs it:
+En concreto, nada de esto existe — verificá antes de importarlo, y creálo como parte de la feature que lo necesite por primera vez:
 
-- **Prisma** — no `prisma/schema.prisma`, no `PrismaService`, `@prisma/client` is not a dependency.
-- **Auth** — no Passport, no JWT, no guards, no `@nestjs/passport`/`@nestjs/jwt`.
-- **Validation** — `class-validator`/`class-transformer` are not installed and `main.ts` registers **no global `ValidationPipe`**. DTO decorators alone will silently do nothing until both are added; the first feature with a request body has to wire the pipe.
-- **Config** — no `@nestjs/config`, no `.env` loading. Env vars are read off `process.env` directly.
-- **Error shape** — no exception filter. The API-wide consistent error shape the specs assume still has to be established by whoever gets there first.
+- **Prisma** — no hay `prisma/schema.prisma`, no hay `PrismaService`, `@prisma/client` no es una dependencia.
+- **Auth** — no hay Passport, no hay JWT, no hay guards, no hay `@nestjs/passport`/`@nestjs/jwt`.
+- **Validación** — `class-validator`/`class-transformer` no están instalados y `main.ts` **no registra ningún `ValidationPipe` global**. Los decoradores de DTO solos no van a hacer nada silenciosamente hasta que se agreguen ambos; la primera feature con un request body tiene que cablear el pipe.
+- **Config** — no hay `@nestjs/config`, no hay carga de `.env`. Las env vars se leen directo de `process.env`.
+- **Forma de los errores** — no hay exception filter. La forma consistente de error a nivel API que asumen las specs todavía la tiene que establecer quien llegue primero a esa necesidad.
 
-Delete the `app.*` scaffold files as real modules replace them rather than building around them; `app.controller.spec.ts` and `test/app.e2e-spec.ts` assert the `"Hello World!"` response and will need to go with them.
+Borrá los archivos de scaffold `app.*` a medida que los reemplacen módulos reales, en vez de construir alrededor de ellos; `app.controller.spec.ts` y `test/app.e2e-spec.ts` verifican la respuesta `"Hello World!"` y tienen que irse junto con ellos.
 
-## Commands
+## Comandos
 
-Run from the repo root (pnpm workspace, single lockfile):
+Corré desde la raíz del repo (workspace de pnpm, un solo lockfile):
 
 ```bash
-pnpm run start:dev                      # watch mode — the primary dev loop (port 3000)
-pnpm --filter api run start:debug       # same, with the Node inspector attached
-pnpm --filter api run build             # nest build → dist/ (deletes outDir first)
+pnpm run start:dev                      # modo watch — el loop principal de dev (puerto 3000)
+pnpm --filter api run start:debug       # lo mismo, con el inspector de Node conectado
+pnpm --filter api run build             # nest build → dist/ (borra outDir primero)
 
-pnpm --filter api run test               # unit tests
-pnpm --filter api run test -- src/app.controller.spec.ts   # a single file
-pnpm --filter api run test -- -t "should return"           # by test name
-pnpm --filter api run test:e2e           # e2e tests (separate Jest config)
+pnpm --filter api run test               # tests unitarios
+pnpm --filter api run test -- src/app.controller.spec.ts   # un solo archivo
+pnpm --filter api run test -- -t "should return"           # por nombre de test
+pnpm --filter api run test:e2e           # tests e2e (config de Jest separada)
 pnpm --filter api run test:cov           # coverage → apps/api/coverage/
 
-pnpm --filter api exec eslint "{src,test}/**/*.ts" --max-warnings 0   # exactly what CI lints
+pnpm --filter api exec eslint "{src,test}/**/*.ts" --max-warnings 0   # exactamente lo que lintea la CI
 ```
 
-## Two Jest setups
+## Los dos setups de Jest
 
-- **Unit** — `*.spec.ts` colocated in `src/`. Config is inline in `package.json` with `rootDir: src`, so `pnpm run test` cannot see `test/`.
-- **E2E** — `*.e2e-spec.ts` in `test/`, run via `test/jest-e2e.json` (`rootDir: .`). These boot the **whole** `AppModule` through `@nestjs/testing` + supertest.
+- **Unit** — `*.spec.ts` ubicados junto al código en `src/`. La config está inline en `package.json` con `rootDir: src`, así que `pnpm run test` no puede ver `test/`.
+- **E2E** — `*.e2e-spec.ts` en `test/`, corridos vía `test/jest-e2e.json` (`rootDir: .`). Estos levantan el `AppModule` **completo** a través de `@nestjs/testing` + supertest.
 
-The e2e coupling to the real `AppModule` is the thing to plan for: anything you import into `AppModule` (Prisma, config, auth) must be able to start under e2e. Adding Prisma means the e2e suite needs a reachable database or an overridden provider, and CI runs `test:e2e` on every PR with no database service defined in `.github/workflows/ci.yml`.
+El acoplamiento del e2e al `AppModule` real es lo que hay que tener en cuenta: todo lo que importes a `AppModule` (Prisma, config, auth) tiene que poder arrancar bajo e2e. Agregar Prisma implica que la suite e2e necesita una base de datos alcanzable o un provider sobreescrito, y la CI corre `test:e2e` en cada PR sin ningún servicio de base de datos definido en `.github/workflows/ci.yml`.
 
 ## Lint: local vs CI
 
-`pnpm --filter api run lint` runs `eslint --fix` with warnings allowed. CI runs the same files with `--max-warnings 0` and no `--fix`. So a clean local lint can still fail the `api` check — reproduce CI with the last command above before pushing.
+`pnpm --filter api run lint` corre `eslint --fix` permitiendo warnings. La CI corre los mismos archivos con `--max-warnings 0` y sin `--fix`. Así que un lint local limpio puede igual fallar el check de `api` — reproducí la CI con el último comando de arriba antes de pushear.
 
-This bites on the two rules configured as warnings in `eslint.config.mjs`, which are CI failures in practice: `@typescript-eslint/no-floating-promises` and `@typescript-eslint/no-unsafe-argument`.
+Esto afecta a las dos reglas configuradas como warning en `eslint.config.mjs`, que en la práctica son fallos de CI: `@typescript-eslint/no-floating-promises` y `@typescript-eslint/no-unsafe-argument`.
 
-The rest of the config worth knowing:
+El resto de la config que vale la pena conocer:
 
-- **Type-aware lint is enabled** (`recommendedTypeChecked` with `projectService`). The `no-unsafe-*` family fires on values typed `any`, which is exactly what untyped request bodies and raw JSON produce. `no-explicit-any` is off, so annotating deliberately is fine; letting `any` flow into a call is what gets flagged.
-- **Prettier is an error-level lint rule.** Formatting options live in `.prettierrc` (`singleQuote`, `trailingComma: all`); only `endOfLine: auto` is set on the rule itself in `eslint.config.mjs`, so CRLF checkouts on Windows won't fail CI.
+- **El lint type-aware está habilitado** (`recommendedTypeChecked` con `projectService`). La familia `no-unsafe-*` se dispara con valores tipados `any`, que es exactamente lo que producen los request bodies sin tipar y el JSON crudo. `no-explicit-any` está apagada, así que anotar `any` a propósito está bien; lo que se marca es dejar que un `any` fluya hacia un call.
+- **Prettier es una regla de lint a nivel error.** Las opciones de formato viven en `.prettierrc` (`singleQuote`, `trailingComma: all`); en la regla misma, en `eslint.config.mjs`, solo está seteado `endOfLine: auto`, así que los checkouts CRLF en Windows no rompen la CI.
 
-## TypeScript specifics
+## Detalles de TypeScript
 
-- **Strictness is laxer than `apps/web`**: `strictNullChecks` is on, but `noImplicitAny` and `strictBindCallApply` are **off**. Don't assume an implicit `any` will be caught by the compiler.
-- **No path alias.** `baseUrl` is `./` with no `paths` — imports are relative (`./app.service`), unlike web's `@/*`. `module`/`moduleResolution` are `nodenext`.
-- **`emitDecoratorMetadata` is on** and required for Nest DI — constructor injection resolves through it.
+- **La strictness es más laxa que en `apps/web`**: `strictNullChecks` está activo, pero `noImplicitAny` y `strictBindCallApply` están **apagados**. No asumas que el compilador va a atrapar un `any` implícito.
+- **Sin path alias.** `baseUrl` es `./` sin `paths` — los imports son relativos (`./app.service`), a diferencia del `@/*` de web. `module`/`moduleResolution` son `nodenext`.
+- **`emitDecoratorMetadata` está activo** y es necesario para la DI de Nest — la inyección por constructor se resuelve a través de eso.
 
-## Conventions for new modules
+## Convenciones para módulos nuevos
 
-**`docs/api-conventions.md` is the contract reference** — module structure, route shape, DTO rules, error codes, and the three endpoint classes every route must be declared as (club / public / platform). Read it before designing or reviewing an endpoint. It is the single source: don't restate its rules here or in an agent prompt.
+**`docs/api-conventions.md` es la referencia del contrato** — estructura de módulo, forma de las rutas, reglas de DTOs, códigos de error, y las tres clases de endpoint en las que toda ruta se tiene que declarar (club / public / platform). Leelo antes de diseñar o revisar un endpoint. Es la fuente única: no repitas sus reglas acá ni en un prompt de agente.

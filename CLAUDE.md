@@ -1,61 +1,61 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Este archivo le da contexto a Claude Code (claude.ai/code) para trabajar en este repositorio.
 
-It covers what is true across the whole monorepo. Package-specific rules live next to the package and are **not** repeated here — read the one for the package you are touching:
+Cubre lo que es válido para todo el monorepo. Las reglas específicas de cada paquete viven al lado del paquete y **no** se repiten acá — leé la que corresponda al paquete que estés tocando:
 
-- `apps/api/AGENTS.md` — NestJS: state of the scaffold, commands, the two Jest setups, TypeScript/lint specifics.
-- `apps/web/AGENTS.md` — Next.js 16: bundled docs to read first, stack specifics, state of the scaffold.
+- `apps/api/AGENTS.md` — NestJS: estado del scaffold, comandos, los dos setups de Jest, detalles de TypeScript/lint.
+- `apps/web/AGENTS.md` — Next.js 16: docs incluidas que hay que leer primero, detalles del stack, estado del scaffold.
 
-Both packages keep a one-line `CLAUDE.md` importing their `AGENTS.md`, so either filename resolves to the same content. `AGENTS.md` is the real file: the team runs mixed tooling (Claude Code and Cursor), and package context has to load regardless of which one you use.
+Ambos paquetes tienen un `CLAUDE.md` de una línea que importa su `AGENTS.md`, así que cualquiera de los dos nombres de archivo resuelve al mismo contenido. `AGENTS.md` es el archivo real: el equipo usa herramientas mixtas (Claude Code y Cursor), y el contexto del paquete tiene que cargar sin importar cuál se use.
 
-## Product context
+## Contexto de producto
 
-dupla is a SaaS where paddle clubs run tournaments: auto-generated brackets, results tracking, and a free public view for players. Clubs are the paying tenant (their staff are the authenticated users); player profiles are platform-global, linked to clubs only through tournament inscriptions. Before designing or implementing a feature, read `docs/product-brief.md` (scope and phasing) and `docs/decisions.md` (technical decisions: PostgreSQL + Prisma, Passport + JWT auth, club-as-tenant, monorepo).
+dupla es un SaaS donde clubes de pádel organizan torneos: brackets autogenerados, seguimiento de resultados, y una vista pública gratuita para jugadores. Los clubes son el tenant que paga (su staff son los usuarios autenticados); los perfiles de jugador son globales a la plataforma, y solo se vinculan a los clubes a través de inscripciones a torneos. Antes de diseñar o implementar una feature, leé `docs/product-brief.md` (alcance y fases) y `docs/decisions.md` (decisiones técnicas: PostgreSQL + Prisma, auth con Passport + JWT, club-as-tenant, monorepo).
 
-**Tenancy invariant** — every club-owned entity (tournaments, courts, inscriptions) carries an indexed `club_id`. Guards and queries on club endpoints always filter by the `club_id` of the authenticated user, **never** by a `club_id` taken from the request body/params/query. `Player` is the exception: it is a platform-global entity with no `club_id`. The public view is read-only and unauthenticated.
+**Invariante de tenancy** — toda entidad propiedad de un club (torneos, canchas, inscripciones) lleva un `club_id` indexado. Los guards y queries en endpoints de club siempre filtran por el `club_id` del usuario autenticado, **nunca** por un `club_id` tomado del body/params/query del request. `Player` es la excepción: es una entidad global a la plataforma sin `club_id`. La vista pública es de solo lectura y no requiere autenticación.
 
-## Current state
+## Estado actual
 
-The decisions in `docs/decisions.md` are committed to but mostly not built yet. Both packages are still their stock scaffolds — no Prisma, no auth, no feature modules, no domain entities, and nothing on the frontend talking to the API. Do not assume any of that infrastructure is available: check before importing it, and create it as part of the feature that first needs it. Each package's own file has the specifics.
+Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no implementadas todavía. Ambos paquetes siguen siendo su scaffold de fábrica — sin Prisma, sin auth, sin módulos de feature, sin entidades de dominio, y nada en el frontend hablando con la API. No asumas que esa infraestructura ya existe: verificá antes de importarla, y creala como parte de la feature que la necesite por primera vez. Los detalles están en el archivo de cada paquete.
 
-## Team workflow
+## Workflow del equipo
 
-Branch per task (`feat/`, `fix/`, `chore/`), PR into protected `main` with squash merge, CI checks `api` and `web` must be green. Never commit directly to `main`. API + frontend changes for the same feature go in one PR. New technical decisions get an entry in `docs/decisions.md` in the same PR. Full guide: `docs/workflow.md`.
+Una branch por tarea (`feat/`, `fix/`, `chore/`), PR hacia `main` protegido con squash merge, los checks de CI `api` y `web` tienen que estar verdes. Nunca commitear directo a `main`. Los cambios de API + frontend de una misma feature van en un solo PR. Las decisiones técnicas nuevas se agregan a `docs/decisions.md` en el mismo PR. Guía completa: `docs/workflow.md`.
 
-`.claude/agents/` holds the team's specialised agents, calibrated to this stack: `api-designer` (endpoint contracts, run it before implementing a feature), `db-architect` (schema and migrations), `test-engineer`, `code-reviewer`, `debugger`.
+`.claude/agents/` tiene los agentes especializados del equipo, calibrados para este stack: `api-designer` (contratos de endpoints, correrlo antes de implementar una feature), `db-architect` (schema y migraciones), `test-engineer`, `code-reviewer`, `debugger`.
 
-## Monorepo layout
+## Estructura del monorepo
 
-pnpm workspace with a single lockfile at the root. Packages live in `apps/*`:
+Workspace de pnpm con un solo lockfile en la raíz. Los paquetes viven en `apps/*`:
 
-- `apps/api` — NestJS 11 backend (port 3000). Standard Nest composition: one module per business domain in `src/<domain>/`, imported into `AppModule`; `@Injectable` services in `providers` injected via constructor DI; `@Controller` classes in `controllers`.
-- `apps/web` — Next.js 16 frontend, App Router + Tailwind v4 (port 3001 in dev). **Read `apps/web/AGENTS.md` before writing Next.js code** — Next 16 conventions differ from older versions.
+- `apps/api` — backend NestJS 11 (puerto 3000). Composición estándar de Nest: un módulo por dominio de negocio en `src/<domain>/`, importado en `AppModule`; servicios `@Injectable` en `providers` inyectados vía DI por constructor; clases `@Controller` en `controllers`.
+- `apps/web` — frontend Next.js 16, App Router + Tailwind v4 (puerto 3001 en dev). **Leé `apps/web/AGENTS.md` antes de escribir código Next.js** — las convenciones de Next 16 difieren de versiones anteriores.
 
-Run everything from the repo root with `pnpm --filter <package>`, or use the root shortcuts below.
+Corré todo desde la raíz del repo con `pnpm --filter <package>`, o usá los atajos de la raíz de abajo.
 
 ## Package manager
 
-Use **pnpm** (not npm/yarn) — `packageManager` is pinned in the root `package.json`. Install with `pnpm install` from the root; never install inside a package with npm/yarn.
+Usá **pnpm** (no npm/yarn) — el `packageManager` está fijado en el `package.json` raíz. Instalá con `pnpm install` desde la raíz; nunca instales dentro de un paquete con npm/yarn.
 
-## Commands
+## Comandos
 
 ```bash
-pnpm run start:dev      # API with watch/hot-reload (primary dev loop)
-pnpm run dev:web        # Next.js dev server
-pnpm run build          # build every package
-pnpm run lint           # lint every package
-pnpm run test           # unit tests in every package that defines them
-pnpm run test:e2e       # API e2e tests
+pnpm run start:dev      # API con watch/hot-reload (loop principal de dev)
+pnpm run dev:web        # servidor de dev de Next.js
+pnpm run build          # build de todos los paquetes
+pnpm run lint           # lint de todos los paquetes
+pnpm run test           # tests unitarios en cada paquete que los define
+pnpm run test:e2e       # tests e2e de la API
 ```
 
-Each is a thin `pnpm -r` / `pnpm --filter` wrapper; per-package commands (single test files, debug mode, coverage, reproducing CI lint exactly) are documented in each package's own file.
+Cada uno es un wrapper fino de `pnpm -r` / `pnpm --filter`; los comandos específicos de cada paquete (un solo archivo de test, modo debug, coverage, reproducir el lint de CI exactamente) están documentados en el archivo de cada paquete.
 
 ## CI
 
-`.github/workflows/ci.yml` runs two jobs on every PR, both on Node 24 with `pnpm install --frozen-lockfile`:
+`.github/workflows/ci.yml` corre dos jobs en cada PR, ambos en Node 24 con `pnpm install --frozen-lockfile`:
 
-- **api** — lint, build, unit tests, e2e tests.
+- **api** — lint, build, tests unitarios, tests e2e.
 - **web** — lint, build.
 
-The lint step for `api` does **not** run the package's own `lint` script; see `apps/api/AGENTS.md` for why a clean local lint can still fail CI.
+El paso de lint de `api` **no** corre el script `lint` propio del paquete; ver `apps/api/AGENTS.md` para entender por qué un lint local limpio puede igual fallar en CI.
