@@ -45,7 +45,8 @@ Los comandos específicos de cada paquete (un solo archivo de test, modo debug, 
 | ---------------------------------------------------- | ------------------------------------------------- |
 | [`docs/product-brief.md`](docs/product-brief.md)     | Producto, modelo de negocio y alcance por fase    |
 | [`docs/decisions.md`](docs/decisions.md)             | Decisiones técnicas, una entrada por decisión     |
-| [`docs/workflow.md`](docs/workflow.md)               | Branches, PRs y checks de CI                      |
+| [`docs/workflow.md`](docs/workflow.md)               | Branches, PRs y checks de CI — las reglas         |
+| [`docs/git-guide.md`](docs/git-guide.md)             | Guía paso a paso de git y GitHub — los comandos   |
 | [`docs/api-conventions.md`](docs/api-conventions.md) | Contrato de la API: rutas, DTOs, códigos de error |
 | [`docs/agents.md`](docs/agents.md)                   | Agentes de IA del equipo y cómo usarlos           |
 

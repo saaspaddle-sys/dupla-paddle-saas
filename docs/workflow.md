@@ -2,6 +2,8 @@
 
 Cómo trabajamos en este monorepo. Es la referencia para todo el equipo; si una regla deja de servir, se cambia por PR como cualquier otra cosa.
 
+Este archivo tiene las **reglas**. Los **comandos** en orden — el ciclo completo de una tarea, de crear la rama a limpiar después del merge — están en [git-guide.md](./git-guide.md).
+
 ## Ramas
 
 - **`main` es sagrada**: siempre está en verde y siempre se puede deployar. Nadie commitea directo a `main` — todo entra por PR con CI verde.
