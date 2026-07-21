@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Card from './component/card';
+import Footer from './component/Footer'
 
 export default function HomePage() {
 
@@ -27,7 +28,6 @@ export default function HomePage() {
       linkText: "Ver posiciones →",
     },
   ];
-
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans">
@@ -71,7 +71,7 @@ export default function HomePage() {
             <div
               className='w-28 h-28 md:w-40 md:h-40 rounded-full overflow-hidden border-2 border-gray-700 shadow-lg'
               style={{
-                backgroundImage: "url('/assets/logos/logo.jpeg')",
+                backgroundImage: "url('/assets/logos/logo.png')",
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
@@ -85,7 +85,7 @@ export default function HomePage() {
           {/* COLUMNA DERECHA: Imagen de fondo */}
           <div className='relative z-10 w-full'>
             <div className='w-full aspect-video md:aspect-square rounded-lg' style={{
-              backgroundImage: "url('/assets/images/background-principal.jpg')",
+              backgroundImage: "url('/assets/images/background-principal.png')",
               //agregamos stilos css basicos para que se vea bien
               backgroundSize: 'cover',
               backgroundPosition: 'center',
@@ -135,6 +135,7 @@ export default function HomePage() {
           </div>
         </section>
       </main>
+      <Footer/>
     </div>
   );
 }
