@@ -109,7 +109,7 @@ export default function HomePage() {
               tiempo real.
             </p>
           </div>
-              {/*Columna derecha, imagen de fondo */}
+          {/*Columna derecha, imagen de fondo */}
           <div className="relative z-10 w-full">
             <div
               className="aspect-video w-full rounded-lg md:aspect-square"
