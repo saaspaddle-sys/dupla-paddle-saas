@@ -2,6 +2,24 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-07-20 — Formato compartido: Prettier en la raíz y check en la CI
+
+**Contexto**: solo `apps/api` tenía el formato garantizado (Prettier como regla de ESLint a nivel error). En `apps/web`, `docs/` y la raíz el formato lo decidía la extensión del editor de cada dev, sin config versionada. Siendo dos, eso produce PRs donde un archivo aparece reformateado entero y el cambio real queda enterrado.
+**Decisión**: Prettier pasa a ser devDependency de la raíz con scripts `format` y `format:check`, más `.prettierrc`, `.prettierignore`, `.editorconfig` y `.gitattributes`. Se agrega un tercer job `format` a la CI que corre `prettier --check` sobre todo el repo.
+**Consecuencias**: el `.prettierrc` raíz se deja mínimo (`endOfLine` solamente) porque Prettier usa el config más cercano a cada archivo y **no los fusiona** — `apps/api` sigue mandando con el suyo y `apps/web` con los defaults, que es lo que ya usaba su scaffold; un config raíz más opinionado reescribiría medio `apps/web`. El check `format` es un tercer status check: hay que agregarlo a los required checks de la branch protection de `main` para que bloquee. `.gitattributes` (`* text=auto eol=lf`) mueve la normalización de finales de línea del `core.autocrlf` de cada máquina al repo; como efecto secundario, el `endOfLine: "auto"` que `apps/api/eslint.config.mjs` tiene como parche para checkouts CRLF en Windows deja de ser necesario, pero se conserva por ahora (sacarlo es un cambio de comportamiento de lint y va en su propio PR).
+
+## 2026-07-20 — Una sola rama de larga vida: `main`
+
+**Contexto**: se había creado una rama `develop` como punto de integración entre los dos devs. El repo ya usa `main` protegida como default y **squash merge** en todos los PRs, y el hosting está diferido — no hay deploy productivo.
+**Decisión**: no se usa una rama `develop` intermedia. `main` es la única rama de larga vida; las ramas de tarea (`feat/`, `fix/`, `chore/`) salen de `main` y vuelven a `main` por PR. La `develop` existente se borra (no tenía commits propios: `git diff main develop` daba vacío).
+**Consecuencias**: lo que habilita el trabajo en paralelo son las ramas cortas, el PR con CI y la aprobación cruzada — no la rama de integración, que sirve para separar "mergeado" de "deployado" y hoy no habría nada que separar. Además una rama de larga vida choca con el squash merge: el squash reescribe los SHAs, así que `develop` y `main` nunca comparten historia real y aparecen divergidas aunque el contenido sea idéntico (ya pasó con el PR #5/#6). Si en algún momento hace falta separar producción de desarrollo, se reevalúa junto con la estrategia de merge — la conversación va a ser squash vs. merge commits, no solo la rama. El ciclo operativo está en [git-guide.md](./git-guide.md).
+
+## 2026-07-20 — `AGENTS.md` por paquete y convenciones en `docs/`
+
+**Contexto**: el equipo usa herramientas distintas (Claude Code y Cursor). El contexto del proyecto estaba en archivos `CLAUDE.md`, que solo lee una de las dos, y las convenciones de API vivían dentro de `.claude/agents/api-designer.md` — inalcanzables para el resto.
+**Decisión**: el archivo real de contexto de cada paquete es `AGENTS.md`, con un `CLAUDE.md` de una línea (`@AGENTS.md`) al lado para que cualquiera de los dos nombres resuelva al mismo contenido. Las convenciones compartidas salen de los agentes a `docs/` (`docs/api-conventions.md` es la primera); `.claude/agents/` queda con rol, herramientas y formato de salida, referenciando esos docs.
+**Consecuencias**: una sola fuente por regla, sin copias divergiendo entre agentes y docs. La capa que **no** es portable es el allowlist de herramientas: en Claude Code `code-reviewer` y `api-designer` no pueden editar archivos, y en otra herramienta eso es una instrucción, no una garantía — el backstop es leer el `git diff` antes de commitear. Guía de uso en `docs/agents.md`.
+
 ## 2026-07-16 — Monorepo con Next.js para el frontend
 
 **Contexto**: el frontend iba a vivir en un repo separado (`dupla-saas-client`), que quedó vacío antes de arrancar. El contrato API↔frontend en un solo PR, los docs/agentes compartidos y los tipos compartibles pesan más que el aislamiento de repos para un equipo chico.

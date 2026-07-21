@@ -1,0 +1,17 @@
+# Finales de línea: LF en el repo y en el working tree, sin importar el sistema
+# operativo ni el core.autocrlf que tenga configurado cada dev.
+* text=auto eol=lf
+
+# Binarios: git no debe intentar normalizarlos.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+
+# Generado por pnpm — se colapsa en la vista de PR de GitHub. No se edita a mano
+# (ver docs/workflow.md para cómo resolver un conflicto acá).
+pnpm-lock.yaml linguist-generated=true
