@@ -5,6 +5,7 @@
   --color-padel-green: #ccff00;
   --color-padel-dark: #121824;
   --color-padel-clay: #d27d2d;
+  --color-brand-red: #ec3237;
 
   --color-text-main: var(--foreground);
   --color-text-muted: var(--foreground-muted);
