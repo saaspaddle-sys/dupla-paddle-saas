@@ -1,0 +1,1 @@
+/*Sidebar/Navbar exclusivo para jugadores*/
