@@ -92,6 +92,7 @@ export default function HomePage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20">
         <section className="relative overflow-hidden rounded-xl bg-deep-onyx p-8 md:p-12 text-white grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+          {/*Columna izquierda, logo e informacion */}
           <div className="relative z-10 flex flex-col items-center gap-4 text-left">
             <div
               className="h-28 w-28 overflow-hidden rounded-full border-2 border-gray-700 shadow-lg md:h-40 md:w-40"
@@ -108,7 +109,7 @@ export default function HomePage() {
               tiempo real.
             </p>
           </div>
-
+              {/*Columna derecha, imagen de fondo */}
           <div className="relative z-10 w-full">
             <div
               className="aspect-video w-full rounded-lg md:aspect-square"
