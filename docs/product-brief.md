@@ -1,6 +1,6 @@
 # Brief de producto — dupla
 
-*Definido el 2026-07-16. Actualizar cuando cambie una decisión de producto; las decisiones técnicas van en [decisions.md](./decisions.md).*
+_Definido el 2026-07-16. Actualizar cuando cambie una decisión de producto; las decisiones técnicas van en [decisions.md](./decisions.md)._
 
 ## Qué es
 
@@ -25,16 +25,19 @@ SaaS para que clubes de pádel organicen torneos: el club carga jugadores, arma 
 ## Alcance
 
 **Fase 1 (primer release — con esto se corre un torneo real):**
+
 1. Crear torneo y asociar jugadores
 2. Generación automática de llaves
 3. Carga de resultados y avance automático de la llave
 4. Vista pública sin login: torneos, llaves y jugadores con filtros
 
 **Fase 2 (el schema la contempla desde el día uno; la UI no existe todavía):**
+
 - Inscripción online — el jugador se anota solo desde la vista pública (requiere resolver identidad de jugador)
 - Canchas y horarios — programación de partidos (colisiones, disponibilidad)
 
 **Fuera de alcance por ahora:**
+
 - Cobro automatizado de suscripciones
 - Rankings cross-club (los perfiles globales lo habilitan, pero no es MVP)
 - Multi-país / multi-moneda (Argentina primero)

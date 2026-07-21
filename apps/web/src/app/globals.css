@@ -1,53 +1,34 @@
 @import "tailwindcss";
 
-/*Agregamos los colores y variables del SAAS de Pádel aquí*/
-@theme{
-  /*segundo backgorund para contrastes*/
+@theme {
   --color-deep-onyx: var(--background-secondary);
-  /*Colores que defini para botones llamativos y textos*/
-  --color-padel-green: #CCFF00;
+  --color-padel-green: #ccff00;
   --color-padel-dark: #121824;
   --color-padel-clay: #d27d2d;
-  
-  /*Base colores para textos*/
+
   --color-text-main: var(--foreground);
   --color-text-muted: var(--foreground-muted);
 
   --color-text-dark-main: var(--dark-foreground);
   --color-text-dark-muted: var(--dark-foreground-muted);
-
-  /* Sombras si el diseño de tu app las requiere */
   --shadow-padel-card: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 :root {
-  /*Fondos*/
-  --background: #f9fbe5; /*fondo claro general*/
-  --background-secondary: #121824; /* Un tono onyx/azul oscuro Fondo oscuro(navbar y secciones)*/
+  --background: #f9fbe5;
+  --background-secondary: #121824;
 
-  /* 1. TEXTOS PARA EL FONDO CLARO (Generales) */
-  --foreground: #171717;          /* Texto principal oscuro */
-  --foreground-muted: #555555;    /* Texto secundario gris */
+  --foreground: #171717;
+  --foreground-muted: #555555;
 
-  /* TEXTOS PARA EL FONDO OSCURO */
-  --dark-foreground: #ffffff;     /* Texto principal claro */
-  --dark-foreground-muted: #9ca3af;/* Texto secundario gris claro (gray-400) */
+  --dark-foreground: #ffffff;
+  --dark-foreground-muted: #9ca3af;
 
-  
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
-
-
-/*
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}*/
 
 body {
   background: var(--background);

@@ -9,6 +9,11 @@
     "build": "pnpm -r run build",
     "lint": "pnpm -r run lint",
     "test": "pnpm -r run test",
-    "test:e2e": "pnpm -r run test:e2e"
+    "test:e2e": "pnpm -r run test:e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.5"
   }
 }
