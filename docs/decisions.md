@@ -2,6 +2,12 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-07-20 — Formato compartido: Prettier en la raíz y check en la CI
+
+**Contexto**: solo `apps/api` tenía el formato garantizado (Prettier como regla de ESLint a nivel error). En `apps/web`, `docs/` y la raíz el formato lo decidía la extensión del editor de cada dev, sin config versionada. Siendo dos, eso produce PRs donde un archivo aparece reformateado entero y el cambio real queda enterrado.
+**Decisión**: Prettier pasa a ser devDependency de la raíz con scripts `format` y `format:check`, más `.prettierrc`, `.prettierignore`, `.editorconfig` y `.gitattributes`. Se agrega un tercer job `format` a la CI que corre `prettier --check` sobre todo el repo.
+**Consecuencias**: el `.prettierrc` raíz se deja mínimo (`endOfLine` solamente) porque Prettier usa el config más cercano a cada archivo y **no los fusiona** — `apps/api` sigue mandando con el suyo y `apps/web` con los defaults, que es lo que ya usaba su scaffold; un config raíz más opinionado reescribiría medio `apps/web`. El check `format` es un tercer status check: hay que agregarlo a los required checks de la branch protection de `main` para que bloquee. `.gitattributes` (`* text=auto eol=lf`) mueve la normalización de finales de línea del `core.autocrlf` de cada máquina al repo; como efecto secundario, el `endOfLine: "auto"` que `apps/api/eslint.config.mjs` tiene como parche para checkouts CRLF en Windows deja de ser necesario, pero se conserva por ahora (sacarlo es un cambio de comportamiento de lint y va en su propio PR).
+
 ## 2026-07-20 — Una sola rama de larga vida: `main`
 
 **Contexto**: se había creado una rama `develop` como punto de integración entre los dos devs. El repo ya usa `main` protegida como default y **squash merge** en todos los PRs, y el hosting está diferido — no hay deploy productivo.
