@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dupla
+      POSTGRES_PASSWORD: dupla
+      POSTGRES_DB: dupla
+    ports:
+      - "5432:5432"
+    volumes:
+      - dupla-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dupla -d dupla"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  adminer: # opcional — GUI de DB en localhost:8080
+    image: adminer
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  dupla-pgdata:
