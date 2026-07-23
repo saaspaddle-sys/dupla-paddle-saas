@@ -4,9 +4,7 @@ export default function AdminPage() {
       <h1 className="text-3xl font-bold tracking-tight text-text-main">
         Panel de administracion
       </h1>
-      <p className="mt-3 text-text-muted">
-        Vista inicial del panel para gestionar torneos, jugadores y sedes.
-      </p>
+      <p className="mt-3 text-text-muted">Vista inicial del panel.</p>
     </main>
   );
 }
