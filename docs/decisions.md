@@ -2,6 +2,14 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-07-23 — Docker Compose para servicios de desarrollo (fase 1)
+
+**Contexto**: PostgreSQL + Prisma está decidido (2026-07-16) pero sin implementar. Sin una forma común de levantar Postgres, cada dev lo instalaría a mano en su máquina (Windows/macOS), con versiones y config divergentes. Además, la CI corre `test:e2e` sobre el `AppModule` completo sin ninguna base de datos definida en `ci.yml` (ver `apps/api/AGENTS.md`): hoy pasa porque el e2e solo verifica `"Hello World!"`, pero en cuanto Prisma entre a `AppModule` la suite e2e va a necesitar una DB alcanzable y el check `api` empezaría a fallar.
+
+**Decisión**: Docker se usa en fase 1 **solo para los servicios de backing**, no para las apps. Se agrega un `compose.yml` en la raíz con Postgres (versión pinneada, volumen nombrado para persistir datos, healthcheck) y Adminer opcional como GUI, más un `.env.example` con `DATABASE_URL`. Las apps (`apps/api`, `apps/web`) siguen corriendo nativas con `pnpm start:dev` / `dev:web`. En la CI, el job `api` gana un service container de Postgres con la misma versión y credenciales, y un `DATABASE_URL` a nivel de job.
+
+**Consecuencias**: el HMR de Next 16 + Turbopack con bind mounts en Windows se degrada, por eso las apps no se containerizan en dev — Docker cubre lo difícil de reproducir (la DB) y Node nativo cubre lo que Docker empeora (el hot-reload). El service de Postgres en CI es **preparatorio**: mientras el e2e no toque la DB no cambia el resultado del check `api`, pero deja la infra lista para que la PR que introduzca Prisma no rompa la CI por un error de conexión. Las credenciales de dev/CI (`dupla`/`dupla`/`dupla`) son solo para local y CI, nunca para un entorno real. Containerizar la DB local **no** compromete la decisión de hosting, que sigue diferida (2026-07-16): los Dockerfiles de producción multi-stage para api y web son **fase 2**, disparada cuando se decida el hosting.
+
 ## 2026-07-20 — Formato compartido: Prettier en la raíz y check en la CI
 
 **Contexto**: solo `apps/api` tenía el formato garantizado (Prettier como regla de ESLint a nivel error). En `apps/web`, `docs/` y la raíz el formato lo decidía la extensión del editor de cada dev, sin config versionada. Siendo dos, eso produce PRs donde un archivo aparece reformateado entero y el cambio real queda enterrado.
