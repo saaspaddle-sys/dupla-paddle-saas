@@ -2,6 +2,28 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-07-23 — Modelo de identidad y suscripción: `User`, `Player`, `Club`
+
+**Contexto**: la decisión "los jugadores tienen cuenta desde fase 1" (más abajo, misma fecha) dejó por definir la relación entre el usuario-staff y el `Player`, y dónde vive la suscripción. Se cierra acá.
+
+**Decisión**:
+
+- **Tres entidades.** `User` = identidad de login (email + contraseña), **sin rol propio** — la autenticación es igual para todos. `Player` = perfil global de torneos, **sin `club_id`**, con `userId` opcional (1:1) hacia `User`. `Club` = el tenant (dueño de torneos, canchas, inscripciones; lleva `club_id`).
+- **El login no lleva rol.** "Organizador" se deriva de tener/pertenecer a un `Club`; "jugador", de tener un `Player`. La app muestra el dashboard de organizador o el menú de jugador según esas relaciones (se resuelven al loguearse y viajan en el JWT), no según un flag. Un mismo `User` puede ser **ambos** (su `Club` + su `Player`), y un jugador que luego crea un club pasa a organizador sin mutar nada. En el registro sí se elige crear cuenta de organizador (crea `Club`, queda pendiente) o de jugador (crea `Player`); la elección se materializa en esas relaciones.
+- **Todo el que se registra tiene contraseña.** Jugador que se registra → `User` + `Player` linkeados. Jugador que carga el organizador → `Player` con `userId = null` (sin login) hasta que esa persona se registre y reclame el perfil (dedup: buscar antes de crear).
+- **La suscripción vive en el `User` dueño** (organizador), no en el `Club`. El plan define cuotas de uso (p. ej. cantidad de torneos). Esto revisa el "pagan los clubes" de la decisión de tenancy (2026-07-16): el que paga es la cuenta dueña, no el club en sí.
+- **MVP: un club por dueño.** El schema deja `User` → varios `Club`, pero la cuota se capea en 1 en fase 1. Con eso el invariante de tenancy **no cambia**: el `club_id` se sigue derivando de la identidad del usuario autenticado (1 usuario = 1 club), nunca del request. Multi-club es un flip posterior (subir la cuota) que, cuando se active, mueve el `club_id` al request verificado contra los clubes del dueño — se decide entonces, no ahora.
+
+**Consecuencias**: el cobro **manual** (2026-07-16, pasarela diferida) implica que registrarse como organizador crea el `User` dueño + su `Club`, pero la cuenta queda pendiente/inactiva hasta activarla a mano — no hay checkout en el registro. Aparece el concepto de **plan/tier** con cuotas, aunque en fase 1 el único enforcement real es el cap de 1 club y las cuotas de torneos se setean a mano. **Por definir en el schema** (db-architect): cómo se modela la pertenencia `User`↔`Club` (owner vs. staff, de cara al multi-staff futuro), los nombres de tablas/campos, y la migración inicial. (Que un `User` sea organizador y jugador a la vez ya queda resuelto: tiene su `Club` y su `Player`.)
+
+## 2026-07-23 — Los jugadores tienen cuenta desde fase 1
+
+**Contexto**: la decisión de tenancy (2026-07-16) fijó que "los jugadores no tienen cuenta en fase 1", y la de auth (2026-07-16) dejó la identidad de jugadores para fase 2, atada a la inscripción online. La dirección de producto cambió: el jugador se registra e inicia sesión desde el primer release, y el organizador también puede crear el perfil cuando hace falta.
+
+**Decisión**: el jugador es un principal autenticado desde fase 1. Un perfil de `Player` (global, sin `club_id`) nace por dos caminos —auto-registro del jugador o alta por el organizador— y ambos comparten la misma resolución de identidad/duplicados. La auth con Passport + JWT (2026-07-16) pasa a cubrir dos tipos de principal: **staff de club** (usuario del tenant, opera el panel del club) y **jugador** (global, sin tenant, sin acceso a ningún panel de club). Esta entrada reemplaza el "los jugadores no tienen cuenta en fase 1" de la decisión de tenancy (2026-07-16) y adelanta a fase 1 la identidad de jugador que la decisión de auth (2026-07-16) ubicaba en fase 2.
+
+**Consecuencias**: el dedup "buscar antes de crear" corre en dos puntos —el signup del jugador y el alta manual del organizador—, y un auto-registro no debe duplicar un perfil que el club ya cargó, ni al revés. La "inscripción online" (fase 2) deja de estar bloqueada por la identidad de jugador, ya resuelta en fase 1, y queda acotada al flujo de auto-inscribirse a un torneo puntual, distinto de tener cuenta. La invariante de tenancy no se toca: `Player` sigue sin `club_id`, y los guards de endpoints de club siguen filtrando por el `club_id` del staff autenticado, nunca por uno del request; que el jugador tenga cuenta no le da acceso a datos de club más allá de la vista pública. **Por definir en el modelado** (no lo cierra esta decisión): la relación entre el usuario-staff y el `Player` —entidades separadas con auth compartida, o si una misma persona puede ser ambas—, y qué superficie autenticada ve el jugador en fase 1 más allá de su perfil/historial.
+
 ## 2026-07-23 — Docker Compose para servicios de desarrollo (fase 1)
 
 **Contexto**: PostgreSQL + Prisma está decidido (2026-07-16) pero sin implementar. Sin una forma común de levantar Postgres, cada dev lo instalaría a mano en su máquina (Windows/macOS), con versiones y config divergentes. Además, la CI corre `test:e2e` sobre el `AppModule` completo sin ninguna base de datos definida en `ci.yml` (ver `apps/api/AGENTS.md`): hoy pasa porque el e2e solo verifica `"Hello World!"`, pero en cuanto Prisma entre a `AppModule` la suite e2e va a necesitar una DB alcanzable y el check `api` empezaría a fallar.
