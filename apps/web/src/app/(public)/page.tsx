@@ -76,7 +76,7 @@ export default function HomePage() {
 
           <div className="pt-1 flex flex-wrap justify-center gap-4">
             <Link
-              href="/login?role=club"
+              href="/register"
               className="px-6 py-3 bg-var(--foreground) text-var(--background) font-medium rounded-xl shadow-md hover:opacity-90 transition-all"
             >
               Registrar mi Club
