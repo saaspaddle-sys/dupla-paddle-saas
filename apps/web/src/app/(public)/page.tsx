@@ -64,6 +64,7 @@ export default function HomePage() {
                 fill
                 sizes="(min-width: 768px) 50vw, 100vw"
                 className="object-cover"
+                loading="eager" // <-- Esto le avisa a Next.js que la cargue de inmediato
               />
             </div>
           </div>
