@@ -2,71 +2,71 @@
 
 _ERD de referencia para la fase 1. Las decisiones que lo sustentan están en [decisions.md](./decisions.md) (identidad, tenancy, billing) y el alcance en [product-brief.md](./product-brief.md)._
 
-Este diagrama es la **fuente de documentación** del modelo. La implementación real la owna Prisma (`prisma/schema.prisma`) cuando se genere la migración con el `db-architect`: nombres de modelo, estrategia de `id` (int vs uuid) y enums nativos pueden diferir de lo que se muestra acá.
+Este diagrama es la **fuente de documentación** del modelo. La implementación real la owna Prisma (`prisma/schema.prisma`) cuando se genere la migración con el `db-architect`: nombres de modelo y enums nativos pueden diferir de lo que se muestra acá.
 
 ## Diagrama
 
 ```mermaid
 erDiagram
     users {
-        bigint id PK
+        uuid id PK
         varchar email UK
         varchar password_hash
         varchar status
     }
     subscriptions {
-        bigint id PK
-        bigint user_id FK "unique"
+        uuid id PK
+        uuid user_id FK "unique"
         varchar plan
         varchar status
         int max_tournaments
     }
     players {
-        bigint id PK
-        bigint user_id FK "nullable, unique"
+        uuid id PK
+        uuid user_id FK "nullable, unique"
         varchar first_name
         varchar last_name
         varchar category
     }
     clubs {
-        bigint id PK
-        bigint owner_id FK
+        uuid id PK
+        uuid owner_id FK
         varchar name
         varchar slug UK
         varchar status
     }
     tournaments {
-        bigint id PK
-        bigint club_id FK
+        uuid id PK
+        uuid club_id FK
         varchar name
         varchar format
         varchar status
     }
     courts {
-        bigint id PK
-        bigint club_id FK
+        uuid id PK
+        uuid club_id FK
         varchar name
     }
     teams {
-        bigint id PK
-        bigint club_id FK
-        bigint tournament_id FK
-        bigint player1_id FK
-        bigint player2_id FK
+        uuid id PK
+        uuid club_id FK
+        uuid tournament_id FK
+        uuid player1_id FK
+        uuid player2_id FK
     }
     matches {
-        bigint id PK
-        bigint club_id FK
-        bigint tournament_id FK
-        bigint team_a_id FK
-        bigint team_b_id FK
-        bigint winner_team_id FK
-        bigint next_match_id FK
-        bigint court_id FK "fase 2"
+        uuid id PK
+        uuid club_id FK
+        uuid tournament_id FK
+        uuid team_a_id FK
+        uuid team_b_id FK
+        uuid winner_team_id FK
+        uuid next_match_id FK
+        uuid court_id FK "fase 2"
     }
     match_sets {
-        bigint id PK
-        bigint match_id FK
+        uuid id PK
+        uuid match_id FK
         int set_number
     }
 
@@ -107,17 +107,18 @@ erDiagram
 
 ## Notas de diseño
 
+- **IDs como `UUID` v7.** Claves primarias y foráneas son UUID, no enteros autoincrementales. Se usa **UUIDv7** (time-ordered) para que los inserts caigan casi secuenciales y no fragmenten el índice del PK como haría el v4 aleatorio. Los genera la app vía Prisma (`@default(uuid(7))`), no la base — el Postgres del compose es 17 y `uuidv7()` nativo recién existe en PG 18. Ver [decisions.md](./decisions.md).
 - **`club_id` denormalizado** en todas las tablas de club (`tournaments`, `teams`, `matches`, `courts`) e indexado. Cumple el invariante de tenancy y deja que cada guard filtre por `club_id` directo, sin joins. Es seguro porque el club de una fila nunca cambia.
 - **Enums como `varchar`** en el DDL de referencia para que draw.io los importe; en Prisma serán enums nativos.
 - **Rol / multi-staff**: cuando exista staff con permisos (owner/admin/planillero), vive en un futuro `club_memberships (user_id, club_id, role)`, no en `users`. Fuera del MVP.
 
 ## DDL de referencia
 
-Sirve para regenerar el ERD en draw.io (**`+ (Insert)` → Advanced → SQL…**) y como bosquejo del schema. **No es la migración**: esa la genera Prisma.
+Sirve para regenerar el ERD en draw.io (**`+ (Insert)` → Advanced → SQL…**) y como bosquejo del schema. **No es la migración**: esa la genera Prisma. Los `id` son UUIDv7 generados por la app (Prisma `@default(uuid(7))`), por eso las columnas UUID no llevan `DEFAULT` en el DDL.
 
 ```sql
 CREATE TABLE users (
-  id                BIGSERIAL PRIMARY KEY,
+  id                UUID PRIMARY KEY,
   email             VARCHAR NOT NULL UNIQUE,
   password_hash     VARCHAR NOT NULL,
   email_verified_at TIMESTAMP,
@@ -127,8 +128,8 @@ CREATE TABLE users (
 );
 
 CREATE TABLE subscriptions (
-  id              BIGSERIAL PRIMARY KEY,
-  user_id         BIGINT NOT NULL UNIQUE REFERENCES users(id),
+  id              UUID PRIMARY KEY,
+  user_id         UUID NOT NULL UNIQUE REFERENCES users(id),
   plan            VARCHAR NOT NULL DEFAULT 'free',     -- free | basic | pro
   status          VARCHAR NOT NULL DEFAULT 'pending',  -- pending | active | cancelled
   max_tournaments INT,
@@ -137,8 +138,8 @@ CREATE TABLE subscriptions (
 );
 
 CREATE TABLE players (
-  id         BIGSERIAL PRIMARY KEY,
-  user_id    BIGINT UNIQUE REFERENCES users(id),   -- nullable: pre-cargado sin cuenta
+  id         UUID PRIMARY KEY,
+  user_id    UUID UNIQUE REFERENCES users(id),   -- nullable: pre-cargado sin cuenta
   first_name VARCHAR NOT NULL,
   last_name  VARCHAR NOT NULL,
   category   VARCHAR,                               -- enum categoría de pádel
@@ -149,8 +150,8 @@ CREATE TABLE players (
 );
 
 CREATE TABLE clubs (
-  id         BIGSERIAL PRIMARY KEY,
-  owner_id   BIGINT NOT NULL REFERENCES users(id),
+  id         UUID PRIMARY KEY,
+  owner_id   UUID NOT NULL REFERENCES users(id),
   name       VARCHAR NOT NULL,
   slug       VARCHAR NOT NULL UNIQUE,
   status     VARCHAR NOT NULL DEFAULT 'pending',    -- pending | active
@@ -158,8 +159,8 @@ CREATE TABLE clubs (
 );
 
 CREATE TABLE tournaments (
-  id         BIGSERIAL PRIMARY KEY,
-  club_id    BIGINT NOT NULL REFERENCES clubs(id),
+  id         UUID PRIMARY KEY,
+  club_id    UUID NOT NULL REFERENCES clubs(id),
   name       VARCHAR NOT NULL,
   category   VARCHAR,                               -- enum
   format     VARCHAR NOT NULL DEFAULT 'single_elim',
@@ -169,43 +170,43 @@ CREATE TABLE tournaments (
 );
 
 CREATE TABLE courts (
-  id         BIGSERIAL PRIMARY KEY,
-  club_id    BIGINT NOT NULL REFERENCES clubs(id),
+  id         UUID PRIMARY KEY,
+  club_id    UUID NOT NULL REFERENCES clubs(id),
   name       VARCHAR NOT NULL,
   is_active  BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
 CREATE TABLE teams (
-  id            BIGSERIAL PRIMARY KEY,
-  club_id       BIGINT NOT NULL REFERENCES clubs(id),
-  tournament_id BIGINT NOT NULL REFERENCES tournaments(id),
-  player1_id    BIGINT NOT NULL REFERENCES players(id),
-  player2_id    BIGINT NOT NULL REFERENCES players(id),
+  id            UUID PRIMARY KEY,
+  club_id       UUID NOT NULL REFERENCES clubs(id),
+  tournament_id UUID NOT NULL REFERENCES tournaments(id),
+  player1_id    UUID NOT NULL REFERENCES players(id),
+  player2_id    UUID NOT NULL REFERENCES players(id),
   seed          INT,
   created_at    TIMESTAMP NOT NULL DEFAULT now()
 );
 
 CREATE TABLE matches (
-  id             BIGSERIAL PRIMARY KEY,
-  club_id        BIGINT NOT NULL REFERENCES clubs(id),
-  tournament_id  BIGINT NOT NULL REFERENCES tournaments(id),
+  id             UUID PRIMARY KEY,
+  club_id        UUID NOT NULL REFERENCES clubs(id),
+  tournament_id  UUID NOT NULL REFERENCES tournaments(id),
   round          INT NOT NULL,
   position       INT NOT NULL,
-  team_a_id      BIGINT REFERENCES teams(id),
-  team_b_id      BIGINT REFERENCES teams(id),
-  winner_team_id BIGINT REFERENCES teams(id),
-  next_match_id  BIGINT REFERENCES matches(id),
+  team_a_id      UUID REFERENCES teams(id),
+  team_b_id      UUID REFERENCES teams(id),
+  winner_team_id UUID REFERENCES teams(id),
+  next_match_id  UUID REFERENCES matches(id),
   next_slot      VARCHAR,                            -- 'A' | 'B'
-  court_id       BIGINT REFERENCES courts(id),       -- fase 2
+  court_id       UUID REFERENCES courts(id),         -- fase 2
   scheduled_at   TIMESTAMP,                          -- fase 2
   status         VARCHAR NOT NULL DEFAULT 'pending', -- pending | in_progress | finished
   created_at     TIMESTAMP NOT NULL DEFAULT now()
 );
 
 CREATE TABLE match_sets (
-  id           BIGSERIAL PRIMARY KEY,
-  match_id     BIGINT NOT NULL REFERENCES matches(id),
+  id           UUID PRIMARY KEY,
+  match_id     UUID NOT NULL REFERENCES matches(id),
   set_number   INT NOT NULL,
   team_a_games INT NOT NULL,
   team_b_games INT NOT NULL
