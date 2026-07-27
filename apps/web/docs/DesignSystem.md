@@ -1,6 +1,5 @@
 # Design System (v0)
 
-
 ## 1. Paleta de colores
 
 Tokens actuales (definidos en `src/app/globals.css`):
