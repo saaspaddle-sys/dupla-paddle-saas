@@ -8,7 +8,7 @@ export default function Register() {
   const [sexoSeleccionado, setSexoSeleccionado] = useState<string>("");
 
   return (
-    <div className="min-h-screen bg-[var(--background)] font-sans flex flex-col">
+    <div className="min-h-screen bg-(--background) font-sans flex flex-col">
       <Header />
 
       <main className="flex-1">

@@ -32,7 +32,7 @@ export default function Header() {
               Partidos en Vivo
             </Link>
             <Link
-              href="/clasificaciones"
+              href="/ranking"
               className="text-text-dark-muted hover:text-padel-green transition-colors"
             >
               Ranking
