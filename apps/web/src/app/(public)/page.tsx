@@ -59,7 +59,7 @@ export default function HomePage() {
           <div className="relative z-10 w-full">
             <div className="relative aspect-video w-full overflow-hidden rounded-lg md:aspect-square">
               <Image
-                src="/assets/images/background-principal.webp"
+                src="/assets/images/Fondo_principal_02.webp"
                 alt="Imagen principal de la plataforma"
                 fill
                 sizes="(min-width: 768px) 50vw, 100vw"
