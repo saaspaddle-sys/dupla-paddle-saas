@@ -5,6 +5,7 @@ import Header from "./component/header";
 import Footer from "./component/Footer";
 
 export default function HomePage() {
+  //mock de pruebas para demostracion de tarjetas
   const features = [
     {
       icon: "🏆",
