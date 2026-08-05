@@ -10,7 +10,13 @@ Que puede hacer el usuario:
 
 - navegar a secciones publicas (torneos, partidos, ranking, sedes).
 - acceder al registro.
-- acceder al login (actualmente en construccion).
+- acceder al login desde el boton del header, que abre un modal.
+
+Estado de las acciones:
+
+- `/register` funciona.
+- el login no tiene ruta propia; se abre como modal.
+- `/torneos`, `/partidos`, `/players` y `/sedes` siguen como links de navegacion y todavia no tienen pantalla final.
 
 Captura sugerida:
 
@@ -33,11 +39,14 @@ Captura sugerida:
 
 ## 3. Login
 
-Ruta: `/login`
+Acceso:
+
+- boton `Iniciar Sesion` en el header.
 
 Estado:
 
-- pantalla de construccion (placeholder).
+- modal funcional.
+- no existe una ruta `/login`.
 
 ## 4. Panel de administracion
 

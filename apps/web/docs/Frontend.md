@@ -4,7 +4,7 @@
 
 - `/` -> home publica.
 - `/register` -> formulario de registro de jugador.
-- `/login` -> pantalla en construccion.
+- `/login` -> no existe como ruta; el acceso se abre desde el `LoginModal` del header.
 - `/admin` -> placeholder de panel administrativo.
 - `/auth/register` -> alias que redirige a `/register`.
 
@@ -16,6 +16,9 @@
 
 - `src/app/(auth)/layout.tsx`:
   - contenedor de rutas de auth, actualmente passthrough.
+
+- `src/app/(auth)/login/component/loginModal.tsx`:
+  - modal cliente reutilizable para el ingreso desde el header.
 
 - `src/app/(players)/layout.tsx`:
   - base de futuras rutas privadas de jugador.
@@ -72,3 +75,4 @@
 - Definir estrategia de proteccion de rutas privadas.
 - Crear capa de servicios/API y tipado de respuestas.
 - Incorporar tests frontend (a definir framework).
+- Corregir el body para que use Geist como fuente efectiva en lugar de Arial.

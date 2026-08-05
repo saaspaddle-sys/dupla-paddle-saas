@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import LoginModal from "@/app/(auth)/login/componenet/loginModal";
+import LoginModal from "@/app/(auth)/login/component/loginModal";
 
 export default function Header() {
   const [isLoginOpen, setLoginOpen] = useState(false);

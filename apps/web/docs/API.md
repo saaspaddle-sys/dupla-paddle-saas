@@ -8,34 +8,23 @@ Este documento describe como el frontend consumira la API cuando el backend comp
 - No existe aun cliente HTTP centralizado en frontend.
 - El login/registro visual todavia no esta conectado al backend.
 
-## Convenciones propuestas de consumo
+## Convenciones de consumo
 
 1. Base URL por entorno:
 
 - `NEXT_PUBLIC_API_BASE_URL`
 
-2. Formato esperado de respuesta exitosa (propuesto):
+2. Formato de respuesta exitosa:
 
-```json
-{
-  "data": {},
-  "meta": {
-    "requestId": "string"
-  }
-}
-```
+- pendiente de definicion por el backend y de registro en `docs/decisions.md`.
 
-3. Formato esperado de error (propuesto):
+3. Formato de error:
 
-```json
-{
-  "error": {
-    "code": "string",
-    "message": "string",
-    "details": {}
-  }
-}
-```
+- pendiente de definicion por el backend y de registro en `docs/decisions.md`.
+
+4. Responsabilidad del frontend:
+
+- documentar como consume la API, no imponer el shape final de respuestas.
 
 ## Autenticacion (pendiente)
 

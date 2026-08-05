@@ -16,10 +16,13 @@ apps/web
 		globals.css
 		(public)/
 		(auth)/
+			login/
+				component/
 		(players)/
 		(customers)/
 		admin/
 		auth/
+		(public)/ranking/
 ```
 
 ## Route groups y segmentos
@@ -28,6 +31,7 @@ apps/web
 - `/(public)` contiene experiencia abierta.
 - `/(auth)` contiene pantallas de autenticacion.
 - `/auth/*` se usa para alias o compatibilidad de rutas.
+- El login ya no tiene ruta propia: se abre como modal desde el header.
 
 ## Patrones utilizados
 
@@ -53,9 +57,10 @@ apps/web
 
 1. Entrada principal: `/` (home publica).
 2. Registro: `/register` (pantalla de formulario).
-3. Login: `/login` (placeholder en construccion).
+3. Login: modal abierto desde el header; no existe ruta propia.
 4. Alias historico: `/auth/register` redirige a `/register`.
-5. Panel admin: `/admin` (placeholder).
+5. Ranking: `/ranking` ya existe y muestra la vista publica de posiciones.
+6. Panel admin: `/admin` (placeholder).
 
 ## Manejo de estado
 

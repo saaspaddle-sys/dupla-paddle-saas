@@ -17,11 +17,11 @@ Mantener una fuente unica de referencia para:
 - `Requirements.md`: requisitos funcionales y no funcionales.
 - `Architecture.md`: estructura de carpetas, patrones y navegacion.
 - `Frontend.md`: inventario tecnico de componentes, layouts y convenciones.
-- `API.md`: contrato de consumo de API (pendiente de endpoints definitivos).
+- `API.md`: contrato de consumo de API, pendiente de definicion backend.
 - `UserManual.md`: guia de uso para usuario final.
-- `desingSistem.md`: sistema visual y lineamientos UI.
-- `RealeseNote.md`: historial de cambios por version.
-- `Deploymenet.md`: despliegue y variables de entorno.
+- `DesignSystem.md`: sistema visual y lineamientos UI.
+- `ReleaseNotes.md`: historial de cambios por version.
+- `Deployment.md`: despliegue y variables de entorno.
 
 ## Estado actual
 
@@ -32,6 +32,6 @@ Mantener una fuente unica de referencia para:
 
 ## Convenciones de mantenimiento
 
-- Actualizar `RealeseNote.md` en cada cambio funcional relevante.
+- Actualizar `ReleaseNotes.md` en cada cambio funcional relevante.
 - Reflejar decisiones de estructura en `Architecture.md`.
-- No documentar endpoints inventados: usar `API.md` como placeholder hasta recibir contrato real.
+- No documentar contratos inventados de API: usar `API.md` como placeholder hasta recibir contrato real.

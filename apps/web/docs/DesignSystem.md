@@ -6,7 +6,9 @@ Tokens actuales (definidos en `src/app/globals.css`):
 
 - `padel-green`: `#ccff00`
 - `padel-green-title`: `#556b2f`
-- `padel-border-green`: `#556b2f`
+- `padel-dark`: `#121824`
+- `padel-clay`: `#d27d2d`
+- `brand-red`: `#ec3237`
 - `deep-onyx`: `var(--background-secondary)`
 - `text-main`, `text-muted`, `text-dark-main`, `text-dark-muted`
 
@@ -17,9 +19,14 @@ Fondos base:
 
 ## 2. Tipografias
 
-- Fuente principal: Geist Sans.
+- Fuente principal declarada en layout: Geist Sans.
+- Fuente efectiva del body: Arial, Helvetica, sans-serif, porque `globals.css` pisa la variable del layout.
 - Fuente mono: Geist Mono.
 - Cargadas via `next/font/google` en layout raiz.
+
+### Pendiente tecnica
+
+- Corregir el `body` para usar la fuente declarada por el layout sin sobreescritura.
 
 ## 3. Espaciados (guia)
 

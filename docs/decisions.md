@@ -98,3 +98,11 @@ Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se e
 ## 2026-07-16 — Hosting: pendiente
 
 **Estado**: decisión diferida a propósito hasta acercarse al primer deploy. No bloquea el desarrollo.
+
+## 2026-08-05 — La documentación viva del frontend vive en `apps/web/docs`
+
+**Contexto**: el frontend mantiene documentación funcional y técnica propia, pero si no se la referencia desde el paquete y no se la indexa en los docs del repo, se vuelve invisible para quien usa agentes o entra por `apps/web/AGENTS.md`.
+
+**Decisión**: la documentación viva del frontend se mantiene en `apps/web/docs/`. `apps/web/AGENTS.md` la referencia como fuente de consulta del paquete, y `apps/web/docs/README.md` actúa como índice principal de esa carpeta.
+
+**Consecuencias**: los cambios funcionales del frontend actualizan esa carpeta en el mismo PR, y cualquier ajuste de alcance o arquitectura del frontend debe seguir reflejándose ahí aunque existan docs raíz del producto y de decisiones técnicas.

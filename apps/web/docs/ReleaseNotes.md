@@ -7,7 +7,10 @@
 - Estructura inicial de documentacion en `apps/web/docs`.
 - Home publica con cards informativas y footer.
 - Pantalla de registro de jugador con formulario extenso.
-- Base de pantallas para login y admin.
+- Login modal abierto desde el header.
+- Vista publica de ranking.
+- Imagen principal de fondo en la home.
+- Base de pantallas para admin.
 
 ### UI/UX
 
@@ -19,6 +22,10 @@
 - Sin integracion de API todavia.
 - Sin flujo de autenticacion productivo conectado a backend.
 - Lint operativo con `eslint`.
+
+### Pendiente de ajuste documental
+
+- La convención de actualizar este archivo en cada cambio funcional ya aplica desde el primer release; esta entrada debe seguirse completando en cada PR relevante.
 
 ## v0.0.1 - 2026-07-16
 

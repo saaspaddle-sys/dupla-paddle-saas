@@ -15,8 +15,12 @@ Incluye:
 
 - Home publica con accesos a torneos, partidos y ranking.
 - Registro de jugador con formulario amplio.
-- Login en estado de construccion.
+- Login como modal abierto desde el header.
 - Estructura inicial para paneles (`admin`, `players`, `customers`).
+
+Queda para fases siguientes:
+
+- Rutas dedicadas para torneos, partidos, jugadores y sedes.
 
 No incluye aun:
 
@@ -41,7 +45,7 @@ No incluye aun:
 ## Modulos principales
 
 - Publico (`(public)`): home, navegacion principal, contenido abierto.
-- Auth (`(auth)` y alias `auth`): login/registro y rutas puente.
+- Auth (`(auth)` y alias `auth`): registro y modal de login reutilizable.
 - Players (`(players)`): area privada orientada a jugador.
 - Customers y Admin: base de paneles internos.
 

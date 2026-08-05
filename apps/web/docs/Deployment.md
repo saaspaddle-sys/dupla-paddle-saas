@@ -54,5 +54,5 @@ En CI general del repo se ejecuta:
 
 ## 6. Riesgos conocidos
 
-- rutas en construccion pueden existir como placeholder (`/login`, `/admin`).
+- rutas en construccion pueden existir como placeholder (`/admin`, `/torneos`, `/partidos`, `/players`, `/sedes`).
 - sin API integrada no hay validacion end-to-end de flujos reales.
