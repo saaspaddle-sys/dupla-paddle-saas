@@ -1,6 +1,11 @@
+"use client";
 import Link from "next/link";
+import { useState } from "react";
+import LoginModal from "@/app/(auth)/login/componenet/loginModal";
 
 export default function Header() {
+  const [isLoginOpen, setLoginOpen] = useState(false);
+
   return (
     <div>
       {/* 1. NAVBAR GENERAL */}
@@ -32,7 +37,7 @@ export default function Header() {
               Partidos en Vivo
             </Link>
             <Link
-              href="/clasificaciones"
+              href="/ranking"
               className="text-text-dark-muted hover:text-padel-green transition-colors"
             >
               Ranking
@@ -47,12 +52,14 @@ export default function Header() {
 
           <div className="flex items-center gap-4">
             {/* 1. INICIAR SESIÓN (Texto sutil que cambia a verde al pasar el mouse) */}
-            <Link
-              href="/login"
-              className="text-text-dark-muted hover:text-padel-green text-sm font-medium px-4 py-2 transition-colors"
+            <button
+              type="button"
+              onClick={() => setLoginOpen(true)} // <-- Dispara el estado para abrir el modal
+
+              className="text-text-dark-muted hover:text-padel-green text-sm font-medium px-4 py-2 transition-colors cursor-pointer"
             >
               Iniciar Sesión
-            </Link>
+            </button>
 
             {/* 2. REGÍSTRATE (Botón destacado: fondo verde, letras oscuras para que se lea perfecto) */}
             <Link
@@ -64,6 +71,8 @@ export default function Header() {
           </div>
         </div>
       </header>
+
+      <LoginModal isOpen={isLoginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
 }

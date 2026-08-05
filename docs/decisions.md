@@ -2,6 +2,18 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-07-25 — IDs como UUIDv7
+
+**Contexto**: PostgreSQL + Prisma (2026-07-16) dejó abierta la estrategia de `id`. El ERD de referencia (`data-model.md`) los mostraba como `bigint`/`BIGSERIAL` a modo de placeholder, marcando "int vs uuid" como pendiente. Se cierra acá.
+
+**Decisión**: las claves primarias y foráneas de todas las tablas son **UUID versión 7**, no enteros autoincrementales.
+
+- **Por qué UUID**: no expone conteos ni el orden de alta en URLs/recursos (la vista pública es sin auth), los ids se pueden generar en la app sin round-trip a la DB, y no hay colisiones al mergear o importar datos entre entornos.
+- **Por qué v7 y no v4**: UUIDv7 es _time-ordered_ (timestamp en los bits altos), así que los inserts caen casi secuenciales y no fragmentan el índice B-tree del PK como hace el v4 aleatorio. Mantiene las ventajas del UUID sin el costo de localidad.
+- **Generación app-side**: los genera Prisma con `@default(uuid(7))`, no la base. El Postgres del compose es 17 y la función nativa `uuidv7()` recién llega en PG 18; generar en la app evita depender de la versión del motor o de la extensión `pg_uuidv7`.
+
+**Consecuencias**: en el schema de Prisma los `id` quedan como `String @id @default(uuid(7)) @db.Uuid` (el `@db.Uuid` hace que la columna sea `uuid` nativa y no `text`). Las columnas UUID pesan 16 bytes vs. 8 de un `bigint` — irrelevante a la escala del MVP. El DDL de referencia en `data-model.md` queda en `UUID` y sin `DEFAULT` (el valor lo pone la app). Esto cierra el "int vs uuid" que la decisión de PostgreSQL + Prisma (2026-07-16) dejaba abierto.
+
 ## 2026-07-23 — Modelo de identidad y suscripción: `User`, `Player`, `Club`
 
 **Contexto**: la decisión "los jugadores tienen cuenta desde fase 1" (más abajo, misma fecha) dejó por definir la relación entre el usuario-staff y el `Player`, y dónde vive la suscripción. Se cierra acá.
