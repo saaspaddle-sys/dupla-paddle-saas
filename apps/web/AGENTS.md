@@ -49,6 +49,8 @@ Todavía no hay setup de tests en este paquete — no hay nada que correr, y no 
 
 Nada habla con la API todavía: no hay fetch wrapper, no hay manejo de auth, no hay tipos compartidos con `apps/api`. La primera feature que lo necesite debería establecer esa capa a propósito y registrar la decisión en `docs/decisions.md`, según las reglas de workflow de la raíz.
 
+La documentación viva del frontend está en `apps/web/docs/`: `README.md` indexa las piezas, `Vision.md` y `Requirements.md` describen alcance, y `Architecture.md` / `Frontend.md` describen la estructura actual. Esos docs describen **este paquete**; el contrato de API sale de `docs/api-conventions.md` y las decisiones técnicas de `docs/decisions.md`, que mandan si algo se contradice. `apps/web/docs/API.md` es el punto de entrada antes de escribir la capa `services/`.
+
 ## Restricciones de producto que le dan forma a esta app
 
 Dos superficies distintas, según `docs/product-brief.md`: un área autenticada para el staff del club, y una **vista pública, sin login** para que los jugadores vean brackets y resultados. Mantené la superficie pública libre de code paths que dependan de auth y barata de renderizar — es la que va a ver la mayoría de los jugadores.

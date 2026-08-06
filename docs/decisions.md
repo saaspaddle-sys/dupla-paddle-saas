@@ -2,6 +2,22 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-08-06 — URLs públicas en español; los route groups no son URLs
+
+**Contexto**: el `Header` de `apps/web` linkeaba `/players` mientras el resto de la navegación pública usaba español (`/torneos`, `/partidos`, `/sedes`, y `/jugadores/seguro` en el `Footer`). Además, la documentación del frontend listaba `/players` como ruta planeada al mismo tiempo que describía el route group `(players)` como área privada del jugador, lo que hacía leer una colisión donde no la hay: en App Router un directorio entre paréntesis **no genera segmento de URL**.
+
+**Decisión**: las rutas públicas se nombran en **español** (`/torneos`, `/partidos`, `/jugadores`, `/sedes`, `/ranking`); el link "Jugadores" del header pasa de `/players` a `/jugadores`. Los **route groups** se siguen nombrando en inglés (`(public)`, `(auth)`, `(players)`, `(customers)`) porque organizan código, no navegación. `(customers)` es el panel del **club** —el tenant que paga—, y en producto y UI se lo llama club, nunca "customer".
+
+**Consecuencias**: el nombre de una carpeta deja de sugerir una URL, así que documentar un route group no compromete el naming de las rutas que cuelguen de él. Queda **pendiente** una inconsistencia previa, sin cerrar acá: la home y el `Footer` enlazan `/clasificaciones` para ranking mientras el `Header` enlaza `/ranking`, que es la que existe — hay que decidir si son la misma pantalla o si una es el ranking histórico (`apps/web/docs/Requirements.md`).
+
+## 2026-08-05 — La documentación viva del frontend vive en `apps/web/docs`
+
+**Contexto**: el frontend mantiene documentación funcional y técnica propia, pero si no se la referencia desde el paquete y no se la indexa en los docs del repo, se vuelve invisible para quien usa agentes o entra por `apps/web/AGENTS.md`.
+
+**Decisión**: la documentación viva del frontend se mantiene en `apps/web/docs/`. `apps/web/AGENTS.md` la referencia como fuente de consulta del paquete, y `apps/web/docs/README.md` actúa como índice principal de esa carpeta. Esos docs describen cómo está construido `apps/web`; cuando algo se contradice con `docs/product-brief.md`, `docs/decisions.md` o `docs/api-conventions.md`, mandan los docs de la raíz.
+
+**Consecuencias**: los cambios funcionales del frontend actualizan esa carpeta en el mismo PR, y cualquier ajuste de alcance o arquitectura del frontend debe seguir reflejándose ahí aunque existan docs raíz del producto y de decisiones técnicas. En particular, `apps/web/docs/API.md` documenta **cómo consume** el frontend, y difiere las reglas del contrato a `docs/api-conventions.md` en vez de duplicarlas.
+
 ## 2026-07-25 — IDs como UUIDv7
 
 **Contexto**: PostgreSQL + Prisma (2026-07-16) dejó abierta la estrategia de `id`. El ERD de referencia (`data-model.md`) los mostraba como `bigint`/`BIGSERIAL` a modo de placeholder, marcando "int vs uuid" como pendiente. Se cierra acá.
