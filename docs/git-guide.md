@@ -75,6 +75,9 @@ pnpm --filter web run lint
 
 pnpm run build
 pnpm run test
+
+pnpm run db:up          # los e2e corren contra Postgres real, no mockeado
+pnpm run db:verify      # schema, migraciones y drift — si el diff toca apps/api/prisma/
 pnpm --filter api run test:e2e
 
 pnpm run format:check   # si falla, `pnpm run format` lo arregla
@@ -82,7 +85,7 @@ pnpm run format:check   # si falla, `pnpm run format` lo arregla
 
 El lint de `api` es la trampa clásica: `pnpm run lint` local pasa con warnings y la CI falla con `--max-warnings 0`. El detalle está en [`apps/api/AGENTS.md`](../apps/api/AGENTS.md).
 
-Después, pasale el agente `code-reviewer` al diff y resolvé lo que encuentre — ver [`agents.md`](./agents.md).
+Después, pasale el agente `code-reviewer` al diff y resolvé lo que encuentre — ver [`agents.md`](./agents.md). Si el diff toca `apps/api/prisma/`, sumá `db-verifier`.
 
 ### 6. Subí la rama y abrí el PR
 

@@ -15,6 +15,8 @@
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter api exec prisma migrate dev",
+    "db:status": "pnpm --filter api exec prisma migrate status",
+    "db:verify": "pnpm --filter api exec prisma validate && pnpm --filter api exec prisma migrate status && pnpm --filter api exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
     "db:generate": "pnpm --filter api exec prisma generate",
     "db:studio": "pnpm --filter api exec prisma studio"
   },

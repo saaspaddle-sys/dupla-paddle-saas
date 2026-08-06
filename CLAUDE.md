@@ -23,7 +23,7 @@ Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no impl
 
 Una branch por tarea (`feat/`, `fix/`, `chore/`), PR hacia `main` protegido con squash merge, los checks de CI `api`, `web` y `format` tienen que estar verdes. Nunca commitear directo a `main`. Los cambios de API + frontend de una misma feature van en un solo PR. Las decisiones técnicas nuevas se agregan a `docs/decisions.md` en el mismo PR. Guía completa: `docs/workflow.md`.
 
-`.claude/agents/` tiene los agentes especializados del equipo, calibrados para este stack: `api-designer` (contratos de endpoints, correrlo antes de implementar una feature), `db-architect` (schema y migraciones), `test-engineer`, `code-reviewer`, `debugger`.
+`.claude/agents/` tiene los agentes especializados del equipo, calibrados para este stack: `api-designer` (contratos de endpoints, correrlo antes de implementar una feature), `db-architect` (schema y migraciones), `db-verifier` (consistencia de Prisma antes de commitear), `test-engineer`, `code-reviewer`, `debugger`.
 
 ## Estructura del monorepo
 
@@ -55,7 +55,7 @@ Cada uno es un wrapper fino de `pnpm -r` / `pnpm --filter`; los comandos especí
 
 `.github/workflows/ci.yml` corre tres jobs en cada PR, todos en Node 24 con `pnpm install --frozen-lockfile`:
 
-- **api** — lint, build, tests unitarios, tests e2e.
+- **api** — lint, build, migraciones + check de drift de Prisma, tests unitarios, tests e2e.
 - **web** — lint, build.
 - **format** — `prettier --check` sobre todo el repo (config en `.prettierrc` raíz; `apps/api` tiene el suyo, que gana por cercanía).
 

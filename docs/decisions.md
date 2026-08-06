@@ -2,6 +2,20 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-08-06 — Verificación de Prisma antes de commitear: check de drift en CI + agente `db-verifier`
+
+**Contexto**: con Prisma 7 ya instalado ("Prisma 7: setup real", misma fecha), la CI aplica las migraciones con `prisma migrate deploy` y nada más. Eso deja un hueco concreto: **`migrate deploy` no compara contra `schema.prisma`**, solo aplica el historial de migraciones y valida checksums de lo ya aplicado. En una base recién creada como la de CI no hay historial previo, así que si alguien edita `schema.prisma` sin generar la migración, el check `api` pasa entero — el cliente se genera desde el `.prisma`, no desde el SQL, así que compila y los tests pasan hasta que alguno toca la columna que no existe. El drift aparece recién en el deploy. Tampoco había forma de inspeccionar el estado de las migraciones a mano: no existían `db:status` ni `db:verify`.
+
+**Decisión**: tres piezas, cada una en su nivel.
+
+- **La CI corta el drift** — paso `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code`, justo después de `migrate deploy` y antes de los tests. Como la base de CI se construye desde cero aplicando las migraciones, compararla contra el `.prisma` **es** comparar migraciones contra schema. Se suma un segundo paso que falla si un PR modifica o borra una migración que ya está en `main` (requiere `fetch-depth: 0`): Prisma no detecta eso por su cuenta, el checksum solo se valida contra bases donde la migración ya corrió.
+- **`pnpm run db:verify`** en local — `validate` + `migrate status` + el mismo check de drift, encadenados de lo más barato a lo más caro. Más `db:status` como atajo.
+- **Agente `db-verifier`** para lo que un script no hace: interpretar la salida, leer el SQL generado contra el `.prisma`, y los checks de git que ningún comando de Prisma cubre. Read-only a propósito (`Read, Grep, Glob, Bash`, sin `Edit`/`Write`): un agente que "arregla" drift editando una migración ya aplicada produce exactamente el error que existe para prevenir. Diseña `db-architect`, verifica `db-verifier`.
+
+**Consecuencias**: **no se agregan hooks** de git ni de Claude Code, aunque el pedido original era "verificar siempre antes de commitear". El equipo usa herramientas mixtas (Claude Code y Cursor), así que un hook cubriría solo a una parte y le daría a esa parte la falsa sensación de que el repo está protegido; además el check bueno necesita Postgres arriba, y un hook que rechaza el commit de un cambio de docs porque Docker está apagado se desactiva en tres días. La línea de corte queda en CI, consistente con el "nada de `--no-verify`" de `workflow.md`. Quien quiera el hook para sí mismo lo pone en su `.claude/settings.local.json`, que no se versiona (se agregó al `.gitignore`).
+
+`prisma migrate diff --from-migrations` —el check que sería independiente del estado de la base local— queda **descartado**: en Prisma 7 exige `datasource.shadowDatabaseUrl` en `prisma.config.ts` y por lo tanto una segunda base, que el volumen `dupla-pgdata` ya inicializado no crea sola. El check de CI da la misma garantía donde importa. Como contrapartida, **`prisma db push` queda prohibido** en este repo: es el único comando que sincroniza la base sin generar migración, y es lo único que dejaría el check local en verde con drift real. Descartados también por redundantes o inexistentes: `prisma validate` en CI (`generate` ya valida el schema), `migrate status` en CI (la base es nueva en cada run), y `prisma format --check` (no existe en v7).
+
 ## 2026-08-06 — Prisma 7: setup real, complementa "PostgreSQL + Prisma" (2026-07-16)
 
 **Contexto**: "PostgreSQL + Prisma" (2026-07-16) dejó la decisión tomada pero sin implementar. Al inicializarlo, la versión instalable ya es **Prisma 7**, que cambió el setup de punta a punta respecto de v6 (el motor de Rust desapareció, reemplazado por un query compiler en WASM). Esta entrada no reemplaza la de 2026-07-16, la completa con lo que exige la versión real.

@@ -24,9 +24,15 @@ Guía operativa completa (setup local, día a día, troubleshooting) en `docs/da
 ```bash
 pnpm run db:up                          # levanta Postgres local (compose.yml)
 pnpm run db:migrate                     # prisma migrate dev — crea/aplica una migración
+pnpm run db:verify                      # validate + migrate status + check de drift
+pnpm run db:status                      # prisma migrate status — qué está aplicado
 pnpm run db:generate                    # prisma generate — regenera el cliente
 pnpm run db:studio                      # prisma studio — GUI de datos
 ```
+
+Corré `db:verify` antes de commitear cualquier cambio en `prisma/`: `migrate deploy` (lo que corre la CI) **no** compara contra `schema.prisma`, así que un schema editado sin su migración compila, pasa los tests y se cae recién en el deploy. Desde este PR la CI corre el mismo check de drift, y el agente `db-verifier` lo interpreta junto con el SQL generado. `prisma db push` no se usa acá — ver `docs/database.md`.
+
+Todo comando de Prisma va vía `pnpm --filter api exec` (o los scripts de la raíz), **nunca `npx prisma` desde otro directorio**: `prisma.config.ts` resuelve el `.env` como `../../.env` asumiendo `cwd == apps/api`, y desde la raíz falla con un error de datasource que no dice nada del cwd.
 
 El cliente se genera en `apps/api/src/generated/prisma/` — **no se commitea** (está en `.gitignore`, `.prettierignore` y en los `ignores` de `eslint.config.mjs`). Se regenera solo con `pnpm install` (hay un `postinstall` en este paquete) o a mano con `pnpm run db:generate`; si TypeScript se queja de que no encuentra `../generated/prisma/client`, es señal de que falta correrlo. `PrismaService` (`src/prisma/`) extiende `PrismaClient` con el driver adapter de `@prisma/adapter-pg` — Prisma 7 lo exige, ya no hay motor embebido por default.
 

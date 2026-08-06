@@ -25,7 +25,25 @@ jobs:
     env:
       DATABASE_URL: postgresql://dupla:dupla@localhost:5432/dupla
     steps:
+      # fetch-depth: 0 para poder comparar contra la base del PR en el paso de abajo
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Prisma no detecta que una migración ya commiteada cambió: el checksum solo
+      # se valida contra bases donde ya se aplicó. Acá se chequea a nivel git.
+      - name: Check migration immutability
+        if: github.event_name == 'pull_request'
+        run: |
+          CAMBIADAS=$(git diff --name-status --diff-filter=MD \
+            "${{ github.event.pull_request.base.sha }}" HEAD \
+            -- apps/api/prisma/migrations)
+          if [ -n "$CAMBIADAS" ]; then
+            echo "Se modificaron o borraron migraciones que ya están en main:"
+            echo "$CAMBIADAS"
+            echo "Una migración aplicada no se edita — se crea una nueva encima."
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@v4
 
@@ -48,6 +66,13 @@ jobs:
 
       - name: Apply migrations
         run: pnpm --filter api exec prisma migrate deploy
+
+      # La base de CI se construye desde cero aplicando las migraciones, así que
+      # compararla contra schema.prisma es comparar migraciones contra schema.
+      # Detecta el caso "edité el schema y me olvidé de generar la migración",
+      # que sin este paso pasa la CI entera salvo que un test toque la columna.
+      - name: Check schema drift
+        run: pnpm --filter api exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 
       - name: Unit tests
         run: pnpm --filter api run test

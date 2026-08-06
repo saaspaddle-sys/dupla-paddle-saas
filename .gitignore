@@ -29,6 +29,10 @@ coverage/
 .settings/
 *.sublime-workspace
 
+# Claude Code — la config personal (permisos, hooks propios) no se versiona;
+# los agentes de .claude/agents/ sí, son código del proyecto
+.claude/settings.local.json
+
 # IDE - VSCode
 .vscode/*
 !.vscode/settings.json

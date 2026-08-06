@@ -66,6 +66,8 @@ El modelo `User` es la plantilla a seguir para toda tabla nueva:
 | `db:up`       | `docker compose up -d db` — solo el servicio de Postgres           |
 | `db:down`     | `docker compose down` — para los contenedores, conserva el volumen |
 | `db:migrate`  | `prisma migrate dev` — crea y aplica una migración                 |
+| `db:status`   | `prisma migrate status` — qué migraciones están aplicadas          |
+| `db:verify`   | `validate` + `migrate status` + check de drift — ver abajo         |
 | `db:generate` | `prisma generate` — regenera el cliente sin migrar                 |
 | `db:studio`   | `prisma studio` — GUI para inspeccionar datos                      |
 
@@ -82,10 +84,31 @@ Todos corren desde la raíz (`pnpm run db:*`) y son wrappers de `pnpm --filter a
 1. Editá `apps/api/prisma/schema.prisma` siguiendo las convenciones del modelo `User` (arriba).
 2. `pnpm run db:migrate` — te va a pedir un nombre para la migración.
 3. **Leé el SQL generado** en `apps/api/prisma/migrations/<timestamp>_<nombre>/migration.sql` antes de commitear — es lo que se corre en CI y en prod, no un detalle interno.
-4. Commiteá el `schema.prisma` y la carpeta de la migración juntos, en el mismo PR que la feature que la necesita.
-5. Quien mergea y actualiza su rama corre `pnpm install && pnpm run db:migrate` para aplicar la migración nueva localmente.
+4. `pnpm run db:verify` — ver la sección de abajo.
+5. Commiteá el `schema.prisma` y la carpeta de la migración juntos, en el mismo PR que la feature que la necesita.
+6. Quien mergea y actualiza su rama corre `pnpm install && pnpm run db:migrate` para aplicar la migración nueva localmente.
 
 Recordá el invariante de tenancy del `CLAUDE.md` raíz: toda entidad propiedad de un club lleva `club_id` indexado (`Player` es la excepción, es global a la plataforma). Para schema nuevo, el camino recomendado es pasarlo por el agente `db-architect` antes de migrar.
+
+**`prisma db push` no se usa en este repo.** Sincroniza la base con el schema sin generar una migración, así que tu base local queda bien, el check de drift de abajo pasa en verde, y el repo queda sin el SQL que necesitan CI, tus compañeros y producción. Si querés iterar rápido sobre una idea, hacelo con `db:migrate` y después juntá las migraciones de prueba en una sola antes de abrir el PR.
+
+### Verificar antes de commitear
+
+```bash
+pnpm run db:verify     # necesita pnpm run db:up
+```
+
+Encadena tres cosas, de la más barata a la más cara:
+
+1. `prisma validate` — el schema y la config parsean. No necesita la base.
+2. `prisma migrate status` — no hay migraciones pendientes, fallidas, ni aplicadas en la base pero ausentes del repo.
+3. `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code` — **el check de drift**: compara tu base contra `schema.prisma` y falla si difieren.
+
+El paso 3 es el que atrapa el error más común y más silencioso: **editaste `schema.prisma` y te olvidaste de generar la migración.** El cliente de Prisma se genera desde el `.prisma`, no desde el SQL, así que el código compila igual y los tests pasan hasta que alguno toca la columna que no existe. La CI corre ese mismo comando (ver abajo).
+
+Para lo que un comando no cubre —que el SQL diga lo mismo que el schema, migraciones ya commiteadas que fueron editadas, cambios destructivos— está el agente `db-verifier`, que corre esto y lee el diff. Solo reporta: no toca archivos ni la base.
+
+Si `db:verify` marca drift, el arreglo es generar la migración que falta con `pnpm run db:migrate`. **Nunca al revés**: editar el `.sql` de una migración que ya está en `main` rompe el checksum en toda base donde ya se aplicó.
 
 ### Usar Prisma desde un módulo de feature
 
@@ -112,20 +135,26 @@ Los e2e (`test/*.e2e-spec.ts`) corren contra Postgres real — no hay provider d
 
 ## Cómo corre en CI
 
-El job `api` de `.github/workflows/ci.yml` levanta un service container `postgres:17` con el mismo healthcheck que el compose local, y define `DATABASE_URL` a nivel de job. Orden de los pasos: `prisma generate` (explícito, no solo confiado al `postinstall` — pnpm restaurando desde su store cacheado no siempre lo dispara) → lint → build → `prisma migrate deploy` → unit tests → e2e tests.
+El job `api` de `.github/workflows/ci.yml` levanta un service container `postgres:17` con el mismo healthcheck que el compose local, y define `DATABASE_URL` a nivel de job. Orden de los pasos: check de migraciones inmutables → `prisma generate` (explícito, no solo confiado al `postinstall` — pnpm restaurando desde su store cacheado no siempre lo dispara) → lint → build → `prisma migrate deploy` → check de drift → unit tests → e2e tests.
 
-`migrate deploy` y no `migrate dev`: aplica las migraciones existentes sin generar una nueva ni pedir input, y falla si detecta drift entre el historial de migraciones y el schema — es el comando pensado para CI/producción, `migrate dev` es solo para desarrollo local.
+`migrate deploy` y no `migrate dev`: aplica las migraciones existentes sin generar una nueva ni pedir input, y es el comando pensado para CI/producción. **Lo que `migrate deploy` no hace es comparar contra `schema.prisma`** — solo aplica el historial de migraciones y verifica los checksums de lo ya aplicado. En una base recién creada como la de CI no hay historial previo, así que un `schema.prisma` editado sin su migración le pasa por al lado. Por eso hay un paso aparte:
+
+- **Check de drift** — el mismo `migrate diff` que corre `db:verify`, justo después de `migrate deploy` y antes de los tests (así falla rápido, y ningún test pudo haber mutado el schema en el medio). Como la base de CI se construye desde cero aplicando las migraciones, compararla contra `schema.prisma` **es** comparar migraciones contra schema.
+- **Check de migraciones inmutables** — primer paso del job, solo en PRs. Falla si el PR modifica o borra un `.sql` que ya está en `main`. Necesita `fetch-depth: 0` en el checkout para tener historia contra la que comparar. Una migración creada y corregida dentro del mismo PR no dispara el check: figura como agregada, no modificada.
+
+Es la única barrera que cubre a todo el equipo, independiente de qué editor o agente use cada uno. No hay hooks de git ni de pre-commit en este repo, a propósito — ver la entrada correspondiente en `decisions.md`.
 
 ## Cuando algo falla
 
-| Síntoma                                               | Causa                                                    | Arreglo                                                                           |
-| ----------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `Cannot find module '../generated/prisma/client'`     | Falta generar el cliente                                 | `pnpm run db:generate`                                                            |
-| `Can't reach database server at localhost:5432`       | Docker apagado o Postgres no levantado                   | `pnpm run db:up`                                                                  |
-| Jest queda colgado, warning de "open handles"         | Un e2e sin `await app.close()`                           | Agregar el `afterAll` que cierra la app                                           |
-| `ExperimentalWarning: VM Modules` en la salida de e2e | Esperado — ver arriba                                    | Ninguno, no sacar el flag                                                         |
-| Base local en estado raro / drift de migraciones      | Migraciones aplicadas a mano o schema editado sin migrar | `pnpm --filter api exec prisma migrate reset` (**borra todos los datos locales**) |
-| Puerto `5432` ocupado al hacer `db:up`                | Otro Postgres corriendo en la máquina                    | Parar el otro proceso o cambiar el puerto en `compose.yml` y en `DATABASE_URL`    |
+| Síntoma                                               | Causa                                                  | Arreglo                                                                           |
+| ----------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `Cannot find module '../generated/prisma/client'`     | Falta generar el cliente                               | `pnpm run db:generate`                                                            |
+| `Can't reach database server at localhost:5432`       | Docker apagado o Postgres no levantado                 | `pnpm run db:up`                                                                  |
+| Jest queda colgado, warning de "open handles"         | Un e2e sin `await app.close()`                         | Agregar el `afterAll` que cierra la app                                           |
+| `ExperimentalWarning: VM Modules` en la salida de e2e | Esperado — ver arriba                                  | Ninguno, no sacar el flag                                                         |
+| `db:verify` falla en el paso de `migrate diff`        | Editaste `schema.prisma` y falta generar la migración  | `pnpm run db:migrate` — nunca editando el `.sql` de una migración ya commiteada   |
+| Base local en estado raro que `db:migrate` no arregla | Migraciones aplicadas a mano, o `db push` en el pasado | `pnpm --filter api exec prisma migrate reset` (**borra todos los datos locales**) |
+| Puerto `5432` ocupado al hacer `db:up`                | Otro Postgres corriendo en la máquina                  | Parar el otro proceso o cambiar el puerto en `compose.yml` y en `DATABASE_URL`    |
 
 ## Lo que todavía no está
 
