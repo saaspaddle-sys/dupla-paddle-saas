@@ -19,7 +19,7 @@ Borrá los archivos de scaffold `app.*` a medida que los reemplacen módulos rea
 
 ## Prisma
 
-`prisma/schema.prisma` es el schema real (ver `docs/decisions.md`, entrada "Prisma 7: setup real"). Comandos, todos desde la raíz:
+Guía operativa completa (setup local, día a día, troubleshooting) en `docs/database.md`. Acá, lo específico de este paquete: `prisma/schema.prisma` es el schema real (ver `docs/decisions.md`, entrada "Prisma 7: setup real"). Comandos, todos desde la raíz:
 
 ```bash
 pnpm run db:up                          # levanta Postgres local (compose.yml)

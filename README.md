@@ -4,7 +4,7 @@
 
 SaaS de torneos de pádel para clubes: torneos, llaves automáticas, resultados y vista pública gratuita para jugadores.
 
-> **Estado**: en desarrollo activo, sin release todavía. Las decisiones técnicas están tomadas pero la mayoría no está implementada — ambos paquetes siguen siendo su scaffold de fábrica. El alcance de la fase 1 está en [`docs/product-brief.md`](docs/product-brief.md).
+> **Estado**: en desarrollo activo, sin release todavía. Las decisiones técnicas están tomadas pero la mayoría no está implementada — `apps/web` sigue siendo su scaffold de fábrica; `apps/api` tiene Prisma inicializado (una sola entidad) pero sin auth ni módulos de feature. El alcance de la fase 1 está en [`docs/product-brief.md`](docs/product-brief.md).
 
 ## Stack
 
@@ -26,7 +26,10 @@ El porqué de cada elección está en [`docs/decisions.md`](docs/decisions.md).
 ## Desarrollo
 
 ```bash
-pnpm install         # desde la raíz — hay un solo lockfile
+pnpm install          # desde la raíz — hay un solo lockfile
+cp .env.example .env  # DATABASE_URL para Postgres local
+pnpm run db:up        # levanta Postgres (+ Adminer en :8080)
+pnpm run db:migrate   # aplica las migraciones de Prisma
 
 pnpm run start:dev   # API con hot-reload (:3000)
 pnpm run dev:web     # frontend (:3001)
@@ -37,7 +40,7 @@ pnpm run test        # tests unitarios
 pnpm run test:e2e    # tests e2e de la API
 ```
 
-Los comandos específicos de cada paquete (un solo archivo de test, modo debug, coverage) están en el `AGENTS.md` correspondiente.
+Los comandos específicos de cada paquete (un solo archivo de test, modo debug, coverage) están en el `AGENTS.md` correspondiente. Detalle de la base de datos (Postgres, Prisma, migraciones) en [`docs/database.md`](docs/database.md).
 
 ## Documentación
 
@@ -45,6 +48,7 @@ Los comandos específicos de cada paquete (un solo archivo de test, modo debug, 
 | ---------------------------------------------------- | ------------------------------------------------- |
 | [`docs/product-brief.md`](docs/product-brief.md)     | Producto, modelo de negocio y alcance por fase    |
 | [`docs/decisions.md`](docs/decisions.md)             | Decisiones técnicas, una entrada por decisión     |
+| [`docs/database.md`](docs/database.md)               | Postgres local, config de Prisma y migraciones    |
 | [`docs/workflow.md`](docs/workflow.md)               | Branches, PRs y checks de CI — las reglas         |
 | [`docs/git-guide.md`](docs/git-guide.md)             | Guía paso a paso de git y GitHub — los comandos   |
 | [`docs/api-conventions.md`](docs/api-conventions.md) | Contrato de la API: rutas, DTOs, códigos de error |
