@@ -6,17 +6,18 @@ Este manual describe el uso de las funcionalidades visibles del frontend en su e
 
 Ruta: `/`
 
-Que puede hacer el usuario:
+Qué puede hacer el usuario:
 
-- navegar a secciones publicas (torneos, partidos, ranking, sedes).
+- navegar a las secciones públicas (torneos, partidos, ranking, sedes).
 - acceder al registro.
-- acceder al login desde el boton del header, que abre un modal.
+- acceder al login desde el botón del header, que abre un modal.
 
 Estado de las acciones:
 
 - `/register` funciona.
-- el login no tiene ruta propia; se abre como modal.
-- `/torneos`, `/partidos`, `/players` y `/sedes` siguen como links de navegacion y todavia no tienen pantalla final.
+- `/ranking` funciona, con datos de ejemplo todavía no conectados a la API.
+- el login no tiene ruta propia: se abre como modal.
+- `/torneos`, `/partidos`, `/jugadores` y `/sedes` siguen como links de navegación y todavía no tienen pantalla.
 
 Captura sugerida:
 
@@ -26,12 +27,14 @@ Captura sugerida:
 
 Ruta: `/register`
 
-Que puede hacer el usuario:
+Qué puede hacer el usuario:
 
 - completar datos de acceso.
-- completar informacion personal.
-- seleccionar categoria segun sexo.
+- completar información personal.
+- seleccionar categoría según sexo.
 - cargar datos de contacto y preferencias de juego.
+
+El formulario todavía no persiste: al enviarlo no se crea ninguna cuenta.
 
 Captura sugerida:
 
@@ -41,14 +44,15 @@ Captura sugerida:
 
 Acceso:
 
-- boton `Iniciar Sesion` en el header.
+- botón `Iniciar Sesión` en el header.
 
 Estado:
 
-- modal funcional.
+- modal funcional a nivel de UI (se abre, se cierra con `X`, con click afuera o con `Esc`).
 - no existe una ruta `/login`.
+- el envío todavía no autentica: no hay backend conectado.
 
-## 4. Panel de administracion
+## 4. Panel de administración
 
 Ruta: `/admin`
 
@@ -58,19 +62,23 @@ Estado:
 
 ## 5. Preguntas frecuentes
 
-1. Necesito cuenta para ver torneos?
+1. ¿Necesito cuenta para ver torneos?
 
-- No. La vista publica esta pensada para consulta sin login.
+- No. La vista pública está pensada para consulta sin login, y es gratis para el jugador.
 
-2. Ya puedo inscribirme a torneos desde la web?
+2. ¿Ya puedo inscribirme a torneos desde la web?
 
-- Aun no. Esa funcionalidad forma parte de las siguientes iteraciones.
+- Todavía no. La auto-inscripción online forma parte de las siguientes iteraciones.
 
-3. El login ya esta conectado al backend?
+3. ¿El login ya está conectado al backend?
 
-- No, todavia no hay autenticacion integrada con API.
+- No, todavía no hay autenticación integrada con la API.
+
+4. ¿El ranking que veo es real?
+
+- No. Es una plantilla con datos de ejemplo hasta que exista la integración con la API.
 
 ## 6. Recomendaciones de uso
 
-- usar navegador actualizado.
-- en mobile, usar orientacion vertical para formularios largos.
+- usar un navegador actualizado.
+- en mobile, usar orientación vertical para los formularios largos.

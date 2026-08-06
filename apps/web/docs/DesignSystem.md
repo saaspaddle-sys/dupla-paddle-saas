@@ -17,21 +17,21 @@ Fondos base:
 - `--background`: `#f9fbe5`
 - `--background-secondary`: `#121824`
 
-## 2. Tipografias
+## 2. Tipografías
 
-- Fuente principal declarada en layout: Geist Sans.
+- Fuente principal declarada en el layout: Geist Sans.
 - Fuente efectiva del body: Arial, Helvetica, sans-serif, porque `globals.css` pisa la variable del layout.
 - Fuente mono: Geist Mono.
-- Cargadas via `next/font/google` en layout raiz.
+- Cargadas vía `next/font/google` en el layout raíz.
 
-### Pendiente tecnica
+### Pendiente técnico
 
-- Corregir el `body` para usar la fuente declarada por el layout sin sobreescritura.
+- Corregir el `body` para que use la fuente declarada por el layout, sin sobrescritura.
 
-## 3. Espaciados (guia)
+## 3. Espaciados (guía)
 
 - Internos comunes: `p-4`, `p-6`, `p-8`, `p-10`.
-- Separacion vertical entre bloques: `space-y-4`, `space-y-6`, `space-y-8`.
+- Separación vertical entre bloques: `space-y-4`, `space-y-6`, `space-y-8`.
 - Radio predominante: `rounded-xl`, `rounded-2xl`.
 
 ## 4. Botones
@@ -45,7 +45,7 @@ Patrones vigentes:
 Reglas:
 
 - Priorizar `font-semibold` o `font-bold`.
-- Estados `hover`, `active` y `focus` deben ser visibles.
+- Los estados `hover`, `active` y `focus` deben ser visibles.
 
 ## 5. Inputs y selects
 
@@ -56,45 +56,47 @@ Base:
 - `bg-gray-50/50` o `bg-gray-50/70`
 - `focus:outline-none focus:border-padel-green`
 
-Recomendacion de foco visible:
+Recomendación de foco visible:
 
 - complementar con `focus:ring-2 focus:ring-padel-green/20`.
 
 ## 6. Cards
 
-- Uso de `Card` en home.
-- Estructura vertical con icono, titulo, descripcion y link.
-- Contraste fuerte con `bg-deep-onyx` + acentos verdes.
+- Uso de `Card` en la home.
+- Estructura vertical con ícono, título, descripción y link.
+- Contraste fuerte con `bg-deep-onyx` más acentos verdes.
 
 ## 7. Modales
 
 - Backdrop con blur (`bg-black/50 backdrop-blur-sm`).
 - Cierre por:
-  - boton `X`
-  - click en backdrop
+  - botón `X`
+  - click en el backdrop
   - tecla `Esc`
-- Bloqueo de scroll del body mientras el modal esta abierto.
+- Bloqueo del scroll del body mientras el modal está abierto.
+- `role="dialog"` y `aria-modal="true"` en el contenedor.
 
 ## 8. Tablas
 
-- Aun no hay tabla final implementada.
-- Guia sugerida para proxima iteracion:
+- Todavía no hay una tabla definitiva implementada.
+- Guía sugerida para la próxima iteración:
   - encabezado sticky en desktop.
   - zebra rows suaves.
   - scroll horizontal en mobile.
 
-## 9. Iconografia
+## 9. Iconografía
 
 - Mixto actual: emojis y SVG inline.
-- Recomendado a futuro: normalizar en una libreria unica (por ejemplo Lucide).
+- Recomendado a futuro: normalizar en una librería única (por ejemplo Lucide).
 
 ## 10. Breakpoints responsive
 
 - `sm`, `md`, `lg` como base.
-- Menu principal desktop en `md+`.
+- Menú principal de desktop en `md+`.
 
-## 11. Reglas Tailwind
+## 11. Reglas de Tailwind
 
-- Usar tokens semanticos (`text-padel-green`, `bg-deep-onyx`) antes que hex directos.
+- Tailwind v4 es CSS-first: **no hay `tailwind.config.*`** a propósito. Los tokens nuevos se agregan como custom properties en `globals.css` dentro de `@theme`, nunca en un config de JS.
+- Usar tokens semánticos (`text-padel-green`, `bg-deep-onyx`) antes que hex directos.
 - Evitar clases extremadamente largas sin extraer componente cuando se repiten.
-- Mantener consistencia entre pantallas publicas y privadas.
+- Mantener consistencia entre pantallas públicas y privadas.

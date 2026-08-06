@@ -25,7 +25,7 @@ export default function Header() {
               Torneos
             </Link>
             <Link
-              href="/players"
+              href="/jugadores"
               className="text-text-dark-muted hover:text-padel-green transition-colors"
             >
               Jugadores
