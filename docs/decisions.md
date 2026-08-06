@@ -2,6 +2,21 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-08-06 — Prisma 7: setup real, complementa "PostgreSQL + Prisma" (2026-07-16)
+
+**Contexto**: "PostgreSQL + Prisma" (2026-07-16) dejó la decisión tomada pero sin implementar. Al inicializarlo, la versión instalable ya es **Prisma 7**, que cambió el setup de punta a punta respecto de v6 (el motor de Rust desapareció, reemplazado por un query compiler en WASM). Esta entrada no reemplaza la de 2026-07-16, la completa con lo que exige la versión real.
+
+**Decisión**: se instala Prisma 7.9.1 con estas piezas, no discrecionales — las impone el motor:
+
+- **Driver adapter obligatorio.** `new PrismaClient()` sin adapter tira error en v7. Para Postgres: `@prisma/adapter-pg` + `pg`, instanciado dentro de `PrismaService` con la `connectionString` de `DATABASE_URL`.
+- **Generator `prisma-client`** (no `prisma-client-js`), con `output` obligatorio → `apps/api/src/generated/prisma` (adentro de `src/` porque `nest build` solo compila esa carpeta). `moduleFormat = "cjs"` porque Nest es CommonJS y el default de v7 es ESM. `importFileExtension = ""` porque los imports internos del cliente generado con extensión `.js` explícita rompen la resolución de módulos de Jest (`jest-resolve` no aplica el mapeo `.js`→`.ts` que sí entiende `tsc`); vacío, Jest cae al `.ts` real vía `moduleFileExtensions`.
+- **`.env` ya no se autocarga.** `apps/api/prisma.config.ts` importa `dotenv` a mano y apunta al `.env` de la **raíz** del monorepo (fuente única; `apps/web` lo va a necesitar también). `prisma generate` tampoco corre solo en `postinstall` de Prisma — se agregó `"postinstall": "prisma generate"` en `apps/api/package.json` como red para clone limpio, más un paso explícito en CI (`prisma generate` antes de Lint/Build) porque el postinstall de un paquete del workspace no se dispara de forma confiable cuando pnpm restaura desde su store cacheado, que es exactamente el escenario de cada run de CI.
+- **`@nestjs/config` entra como consecuencia**, no por decisión propia: nada cargaba `.env` en la app (`main.ts` solo leía `process.env.PORT`), y ahora `PrismaService` necesita `DATABASE_URL` resuelto.
+- **`timestamptz` en vez de `timestamp`** para las columnas de tiempo — el DDL de referencia en `data-model.md` usaba `TIMESTAMP` como bosquejo para draw.io, no como la migración real.
+- **Jest necesita `NODE_OPTIONS=--experimental-vm-modules`** (vía `cross-env` en el script `test:e2e`) porque el query compiler WASM de v7 carga con `import()` dinámico, y Jest —a diferencia de Node en runtime normal— no lo soporta sin ese flag experimental.
+
+**Consecuencias**: el cliente generado (`apps/api/src/generated/`) no se commitea — está en `.gitignore`, `.prettierignore` y en los `ignores` del `eslint.config.mjs` del paquete. La migración inicial (`prisma/migrations/20260806194610_init_users`) confirma la forma que fijó "IDs como UUIDv7" (2026-07-25): `id UUID` sin `DEFAULT`. El invariante de tenancy (2026-07-16) todavía no tiene guard: esta PR solo trae la tabla `users`, sin ninguna entidad con `club_id` todavía, así que el guard que lea el `club_id` del JWT se cablea recién cuando exista auth.
+
 ## 2026-08-06 — URLs públicas en español; los route groups no son URLs
 
 **Contexto**: el `Header` de `apps/web` linkeaba `/players` mientras el resto de la navegación pública usaba español (`/torneos`, `/partidos`, `/sedes`, y `/jugadores/seguro` en el `Footer`). Además, la documentación del frontend listaba `/players` como ruta planeada al mismo tiempo que describía el route group `(players)` como área privada del jugador, lo que hacía leer una colisión donde no la hay: en App Router un directorio entre paréntesis **no genera segmento de URL**.

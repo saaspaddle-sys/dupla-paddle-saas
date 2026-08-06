@@ -17,7 +17,7 @@ dupla es un SaaS donde clubes de pádel organizan torneos: brackets autogenerado
 
 ## Estado actual
 
-Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no implementadas todavía. Ambos paquetes siguen siendo su scaffold de fábrica — sin Prisma, sin auth, sin módulos de feature, sin entidades de dominio, y nada en el frontend hablando con la API. No asumas que esa infraestructura ya existe: verificá antes de importarla, y creala como parte de la feature que la necesite por primera vez. Los detalles están en el archivo de cada paquete.
+Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no implementadas todavía. `apps/web` sigue siendo su scaffold de fábrica, sin hablar con la API. `apps/api` tiene Prisma inicializado (una sola entidad, `User`) pero sin auth, sin módulos de feature más allá de eso. No asumas que el resto de esa infraestructura ya existe: verificá antes de importarla, y creala como parte de la feature que la necesite por primera vez. Los detalles están en el archivo de cada paquete.
 
 ## Workflow del equipo
 

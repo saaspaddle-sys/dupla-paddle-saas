@@ -2,7 +2,7 @@
 
 _ERD de referencia para la fase 1. Las decisiones que lo sustentan están en [decisions.md](./decisions.md) (identidad, tenancy, billing) y el alcance en [product-brief.md](./product-brief.md)._
 
-Este diagrama es la **fuente de documentación** del modelo. La implementación real la owna Prisma (`prisma/schema.prisma`) cuando se genere la migración con el `db-architect`: nombres de modelo y enums nativos pueden diferir de lo que se muestra acá.
+Este diagrama es la **fuente de documentación** del modelo. La implementación real la owna Prisma (`apps/api/prisma/schema.prisma`); hoy cubre solo `users` (ver "Prisma 7: setup real" en `decisions.md`), el resto de las tablas se migra tabla por tabla con el `db-architect` a medida que cada feature las necesita. Nombres de modelo y enums nativos pueden diferir de lo que se muestra acá; en particular, las columnas de tiempo (`created_at`, etc.) son `timestamptz` en el schema real, no `timestamp`.
 
 ## Diagrama
 
