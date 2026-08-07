@@ -6,17 +6,35 @@ El contexto que aplica a todo el repo (producto, invariante de tenancy, workflow
 
 ## Estado del código
 
-`src/` es el scaffold intacto de NestJS: `AppModule` → `AppController`/`AppService` devolviendo `"Hello World!"`, y `main.ts` que no hace nada más que `NestFactory.create` + `listen(process.env.PORT ?? 3000)`. Nada de lo que está en `docs/decisions.md` está implementado todavía.
+`AppController`/`AppService` siguen siendo el scaffold de NestJS devolviendo `"Hello World!"`. Lo que ya no es scaffold: `AppModule` importa `ConfigModule` (global, carga el `.env` de la raíz del monorepo) y `PrismaModule`; hay una sola entidad, `User` (tabla `users`), migrada. El resto de `docs/decisions.md` sigue sin implementar.
 
-En concreto, nada de esto existe — verificá antes de importarlo, y creálo como parte de la feature que lo necesite por primera vez:
+En concreto, esto todavía no existe — verificá antes de importarlo, y creálo como parte de la feature que lo necesite por primera vez:
 
-- **Prisma** — no hay `prisma/schema.prisma`, no hay `PrismaService`, `@prisma/client` no es una dependencia.
 - **Auth** — no hay Passport, no hay JWT, no hay guards, no hay `@nestjs/passport`/`@nestjs/jwt`.
 - **Validación** — `class-validator`/`class-transformer` no están instalados y `main.ts` **no registra ningún `ValidationPipe` global**. Los decoradores de DTO solos no van a hacer nada silenciosamente hasta que se agreguen ambos; la primera feature con un request body tiene que cablear el pipe.
-- **Config** — no hay `@nestjs/config`, no hay carga de `.env`. Las env vars se leen directo de `process.env`.
 - **Forma de los errores** — no hay exception filter. La forma consistente de error a nivel API que asumen las specs todavía la tiene que establecer quien llegue primero a esa necesidad.
+- **Guard de tenancy** — el invariante de `club_id` (raíz `CLAUDE.md`) está documentado pero no cableado: no hay todavía ninguna entidad con `club_id` ni un concepto de "usuario autenticado" del que sacarlo. Se implementa junto con auth.
 
 Borrá los archivos de scaffold `app.*` a medida que los reemplacen módulos reales, en vez de construir alrededor de ellos; `app.controller.spec.ts` y `test/app.e2e-spec.ts` verifican la respuesta `"Hello World!"` y tienen que irse junto con ellos.
+
+## Prisma
+
+Guía operativa completa (setup local, día a día, troubleshooting) en `docs/database.md`. Acá, lo específico de este paquete: `prisma/schema.prisma` es el schema real (ver `docs/decisions.md`, entrada "Prisma 7: setup real"). Comandos, todos desde la raíz:
+
+```bash
+pnpm run db:up                          # levanta Postgres local (compose.yml)
+pnpm run db:migrate                     # prisma migrate dev — crea/aplica una migración
+pnpm run db:verify                      # validate + migrate status + check de drift
+pnpm run db:status                      # prisma migrate status — qué está aplicado
+pnpm run db:generate                    # prisma generate — regenera el cliente
+pnpm run db:studio                      # prisma studio — GUI de datos
+```
+
+Corré `db:verify` antes de commitear cualquier cambio en `prisma/`: `migrate deploy` (lo que corre la CI) **no** compara contra `schema.prisma`, así que un schema editado sin su migración compila, pasa los tests y se cae recién en el deploy. Desde este PR la CI corre el mismo check de drift, y el agente `db-verifier` lo interpreta junto con el SQL generado. `prisma db push` no se usa acá — ver `docs/database.md`.
+
+Todo comando de Prisma va vía `pnpm --filter api exec` (o los scripts de la raíz), **nunca `npx prisma` desde otro directorio**: `prisma.config.ts` resuelve el `.env` como `../../.env` asumiendo `cwd == apps/api`, y desde la raíz falla con un error de datasource que no dice nada del cwd.
+
+El cliente se genera en `apps/api/src/generated/prisma/` — **no se commitea** (está en `.gitignore`, `.prettierignore` y en los `ignores` de `eslint.config.mjs`). Se regenera solo con `pnpm install` (hay un `postinstall` en este paquete) o a mano con `pnpm run db:generate`; si TypeScript se queja de que no encuentra `../generated/prisma/client`, es señal de que falta correrlo. `PrismaService` (`src/prisma/`) extiende `PrismaClient` con el driver adapter de `@prisma/adapter-pg` — Prisma 7 lo exige, ya no hay motor embebido por default.
 
 ## Comandos
 
@@ -39,9 +57,12 @@ pnpm --filter api exec eslint "{src,test}/**/*.ts" --max-warnings 0   # exactame
 ## Los dos setups de Jest
 
 - **Unit** — `*.spec.ts` ubicados junto al código en `src/`. La config está inline en `package.json` con `rootDir: src`, así que `pnpm run test` no puede ver `test/`.
-- **E2E** — `*.e2e-spec.ts` en `test/`, corridos vía `test/jest-e2e.json` (`rootDir: .`). Estos levantan el `AppModule` **completo** a través de `@nestjs/testing` + supertest.
+- **E2E** — `*.e2e-spec.ts` en `test/`, corridos vía `test/jest-e2e.json` (`rootDir: .`). Estos levantan el `AppModule` **completo** a través de `@nestjs/testing` + supertest, contra Postgres real (el `compose.yml` en local, un service container en CI) — no hay provider de Prisma mockeado.
 
-El acoplamiento del e2e al `AppModule` real es lo que hay que tener en cuenta: todo lo que importes a `AppModule` (Prisma, config, auth) tiene que poder arrancar bajo e2e. Agregar Prisma implica que la suite e2e necesita una base de datos alcanzable o un provider sobreescrito, y la CI corre `test:e2e` en cada PR sin ningún servicio de base de datos definido en `.github/workflows/ci.yml`.
+El acoplamiento del e2e al `AppModule` real es lo que hay que tener en cuenta: todo lo que importe `AppModule` tiene que poder arrancar bajo e2e. Dos consecuencias concretas de que Prisma ya esté adentro:
+
+- Cada archivo `*.e2e-spec.ts` que levante `AppModule` tiene que cerrarlo en `afterAll` (`await app.close()`) para que `PrismaService.onModuleDestroy` corra el `$disconnect()`. Un `beforeEach`/`afterEach` sin `close()` deja pools de conexión abiertos y Jest cuelga con el warning de "open handles" — pasó una vez en `app.e2e-spec.ts`, ver el `git blame` de esa sección si vuelve a aparecer.
+- `test:e2e` corre con `NODE_OPTIONS=--experimental-vm-modules` (vía `cross-env`, ver el script en `package.json`). Hace falta porque Prisma 7 no tiene motor de Rust: el query compiler es WASM y se carga con `import()` dinámico, que Jest no soporta sin ese flag experimental. Es una limitación de Jest, no algo a "arreglar" — no lo saques si ves el warning de `ExperimentalWarning: VM Modules` en la salida, es esperado.
 
 ## Lint: local vs CI
 

@@ -12,19 +12,22 @@ Un agente es un rol con un prompt fijo, un set de herramientas acotado y **conte
 
 El punto 3 es el único que controlás en el momento, y es donde se gana o se pierde la eficiencia. Un agente que pregunta obviedades o inventa suposiciones casi siempre recibió un pedido pobre, no es "que el modelo está tonto".
 
-## Los cinco agentes
+## Los seis agentes
 
-| Agente          | Para qué                                                  | Toca código             |
-| --------------- | --------------------------------------------------------- | ----------------------- |
-| `api-designer`  | Contrato de una feature: módulo, endpoints, DTOs, errores | No — produce una spec   |
-| `db-architect`  | Schema, entidades, migraciones Prisma                     | Sí                      |
-| `test-engineer` | Escribir tests nuevos, dejar la suite verde               | Solo archivos de test   |
-| `debugger`      | Bug con causa raíz desconocida                            | Sí                      |
-| `code-reviewer` | Revisar un diff antes del PR                              | No — solo lee y reporta |
+| Agente          | Para qué                                                            | Toca código             |
+| --------------- | ------------------------------------------------------------------- | ----------------------- |
+| `api-designer`  | Contrato de una feature: módulo, endpoints, DTOs, errores           | No — produce una spec   |
+| `db-architect`  | Schema, entidades, migraciones Prisma                               | Sí                      |
+| `db-verifier`   | Consistencia de Prisma antes del commit: drift, migraciones, config | No — solo lee y reporta |
+| `test-engineer` | Escribir tests nuevos, dejar la suite verde                         | Solo archivos de test   |
+| `debugger`      | Bug con causa raíz desconocida                                      | Sí                      |
+| `code-reviewer` | Revisar un diff antes del PR                                        | No — solo lee y reporta |
 
-Dos consecuencias prácticas de esa última columna:
+Los dos de base de datos se reparten así: **`db-architect` diseña** (¿esta tabla necesita `club_id`? ¿se justifica este índice?) y **`db-verifier` verifica** que lo que quedó en disco sea consistente consigo mismo. Por eso el segundo no tiene `Edit`: un agente que "arregla" drift editando una migración ya aplicada produce justo el error que existe para prevenir.
 
-- **`api-designer` y `code-reviewer` no pueden romper nada.** Usalos sin miedo y seguido; el costo de una consulta de más es cero.
+Dos consecuencias prácticas de la última columna:
+
+- **`api-designer`, `code-reviewer` y `db-verifier` no pueden romper nada.** Usalos sin miedo y seguido; el costo de una consulta de más es cero.
 - **`test-engineer` no arregla el código fuente a propósito.** Si un test destapa un bug, lo reporta y deja el test marcando el comportamiento correcto. Eso es deliberado: no queremos que "poner la suite en verde" termine cambiando la lógica de negocio sin que nadie lo mire.
 
 ## Cómo se le pide algo a un agente
@@ -64,9 +67,10 @@ El orden está en `docs/workflow.md` y no lo repetimos acá. Lo que importa sobr
 Delegar no transfiere la responsabilidad. Antes de commitear lo que produjo un agente:
 
 - **Corré los comandos vos mismo.** `pnpm run test` y, sobre todo, `pnpm --filter api exec eslint "{src,test}/**/*.ts" --max-warnings 0` — el lint local con `--fix` pasa en casos donde CI falla (ver `apps/api/AGENTS.md`).
+- **Si el diff toca `apps/api/prisma/`, corré `pnpm run db:verify`** (necesita `pnpm run db:up`). Un schema editado sin su migración compila y pasa los tests; se cae en el deploy.
 - **Leé el diff completo.** Si no podés explicar una línea en el review, no está lista para mergear.
 - **Chequeá el invariante de tenancy a mano** en cualquier endpoint del club. Es la clase de bug más cara del producto y la que peor se detecta leyendo por arriba.
-- **Desconfiá de lo que asume infraestructura que no existe.** Hoy `apps/api` es el scaffold pelado de NestJS: no hay Prisma, ni auth, ni `ValidationPipe` global. Un agente puede escribir DTOs con decoradores de `class-validator` que no validan nada porque falta la dependencia y el pipe. Si una feature es la primera que necesita una pieza de infraestructura, esa pieza es parte de la feature.
+- **Desconfiá de lo que asume infraestructura que no existe.** Hoy `apps/api` tiene Prisma con una sola entidad (`User`) y nada más: no hay auth, ni `ValidationPipe` global, ni exception filter. Un agente puede escribir DTOs con decoradores de `class-validator` que no validan nada porque falta la dependencia y el pipe. Si una feature es la primera que necesita una pieza de infraestructura, esa pieza es parte de la feature.
 
 ## Antipatrones
 
@@ -87,3 +91,5 @@ Los archivos de `.claude/agents/` son código del proyecto: se editan por PR y s
 - **Agente nuevo solo con un rol claro y repetido.** Cinco agentes que el equipo usa valen más que doce que nadie recuerda. Si aparece uno nuevo, va con su entrada en `docs/decisions.md`.
 
 Una nota de configuración: casi todos usan `model: inherit` (heredan el modelo de tu sesión); `test-engineer` está fijado en `sonnet` a propósito, porque escribir tests siguiendo un patrón existente no necesita el modelo más caro. Si cambiás eso, que sea una decisión consciente y documentada.
+
+El repo **no versiona hooks** de Claude Code, y es deliberado: el equipo usa herramientas mixtas, así que un hook cubriría solo a una parte y las barreras que valen para todos van en CI (ver la entrada de `db-verifier` en `decisions.md`). Si querés uno para vos —por ejemplo disparar `db:verify` antes de un commit— va en tu `.claude/settings.local.json`, que está gitignoreado.

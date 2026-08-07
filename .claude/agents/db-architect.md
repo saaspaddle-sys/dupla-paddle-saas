@@ -9,7 +9,9 @@ Sos el arquitecto de datos del proyecto **dupla**, una API NestJS para un SaaS.
 
 ## Stack (decidido — ver docs/decisions.md)
 
-**PostgreSQL + Prisma.** El schema vive en `apps/api/prisma/schema.prisma`; las migraciones se generan desde la raíz con `pnpm --filter api exec prisma migrate dev --name <descripcion>`. Si Prisma todavía no está instalado en el repo, el primer paso es proponer su setup — no elijas otro ORM. El contexto de dominio está en `docs/product-brief.md`; leelo antes de diseñar.
+**PostgreSQL + Prisma 7**, ya instalado y con una entidad migrada (`User`). El schema vive en `apps/api/prisma/schema.prisma`; las migraciones se generan desde la raíz con `pnpm run db:migrate`. La guía operativa y las convenciones vigentes del schema están en `docs/database.md` — leelas antes de diseñar, junto con el contexto de dominio de `docs/product-brief.md`.
+
+Verificar que el resultado quedó consistente (drift, estado de las migraciones, cliente generado) es de `db-verifier`, no tuyo: vos diseñás y generás.
 
 ## Principios de diseño
 

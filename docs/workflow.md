@@ -47,8 +47,9 @@ Este archivo tiene las **reglas**. Los **comandos** en orden — el ciclo comple
 2. Si toca schema: `db-architect` diseña tablas y migración.
 3. Se implementa (API y UI en la misma rama).
 4. `test-engineer` cubre lo nuevo con tests.
-5. `code-reviewer` sobre el diff → se corrigen los hallazgos.
-6. PR → review humano → squash merge.
+5. Si tocó schema: `db-verifier` y `pnpm run db:verify` en verde, antes del review.
+6. `code-reviewer` sobre el diff → se corrigen los hallazgos.
+7. PR → review humano → squash merge.
 
 Para bugs: `debugger` primero (causa raíz), fix con su test de regresión, PR normal.
 
@@ -59,3 +60,5 @@ Para bugs: `debugger` primero (causa raíz), fix con su test de regresión, PR n
 - `--no-verify`, silenciar tests o bajar la severidad de lint para pasar el CI.
 - PRs de 2000 líneas mezclando refactor + feature + formato.
 - Resolver el lockfile a mano o commitear `node_modules`/`.env`.
+- `prisma db push` contra la base de desarrollo: sincroniza sin generar migración y es la forma más fácil de meter drift silencioso (ver `database.md`).
+- Editar una migración que ya está en `main`. Se arregla con una migración nueva encima, siempre.
