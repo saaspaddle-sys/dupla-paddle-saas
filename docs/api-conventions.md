@@ -4,13 +4,13 @@ Reglas de contrato para los endpoints de `apps/api`. Son conocimiento del proyec
 
 ## Estructura
 
-- **Un módulo por dominio de negocio** en `src/<dominio>/`, importado en `AppModule`.
+- **Un módulo por dominio de negocio** en `src/<dominio>/`, importado en `AppModule`. La carpeta se llama como el recurso que expone, en inglés: `src/tournaments/` sirve `/tournaments`.
 - Un módulo no importa clases internas de otro: consume solo lo que el otro declara en sus `exports`.
 
 ## Rutas
 
-- REST con **sustantivos en plural**, en kebab-case: `/torneos`, `/inscripciones`.
-- **Un nivel de anidamiento como máximo**: `/torneos/:id/inscripciones` está bien; `/clubes/:id/torneos/:id/inscripciones/:id` no. Si necesitás más profundidad, el recurso anidado probablemente merece ser propio.
+- REST con **sustantivos en plural y en inglés**, en kebab-case: `/tournaments`, `/inscriptions`. Las URLs públicas de `apps/web` van en **español** (`/torneos`, `/jugadores`) — son dos superficies distintas y no una inconsistencia: la API la consume código, las URLs las lee un jugador (`docs/decisions.md`, 2026-08-14).
+- **Un nivel de anidamiento como máximo**: `/tournaments/:id/inscriptions` está bien; `/clubs/:id/tournaments/:id/inscriptions/:id` no. Si necesitás más profundidad, el recurso anidado probablemente merece ser propio.
 - El `club_id` **nunca** aparece en la ruta de un endpoint del club — sale del usuario autenticado (ver abajo).
 
 ## Las tres clases de endpoint

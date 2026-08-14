@@ -2,6 +2,16 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-08-14 — Los endpoints de la API se nombran en inglés; las URLs públicas siguen en español
+
+**Contexto**: `docs/api-conventions.md` daba sus ejemplos de rutas en español (`/torneos`, `/inscripciones`) mientras todo el resto del backend ya estaba en inglés: las tablas (`users`, `players`), los modelos de Prisma, y los tags de OpenAPI que introdujo la entrada de Swagger de hoy (`club`, `public`, `platform`). Además, "URLs públicas en español" (2026-08-06) se leía por proximidad como si también cubriera la API, cuando esa decisión es sobre la navegación de `apps/web`.
+
+**Decisión**: los **endpoints de `apps/api` se nombran en inglés** (`/tournaments`, `/inscriptions`), y con ellos las carpetas de módulo (`src/tournaments/`), los controllers y los DTOs. Las **URLs públicas de `apps/web` siguen en español** (`/torneos`, `/jugadores`). Esta entrada **no revierte** la del 2026-08-06: la delimita — aquella decide navegación, esta decide contrato.
+
+Son criterios distintos porque los lectores son distintos: la URL pública la lee un jugador, es parte del producto y del SEO en español; el endpoint lo lee código, y convive con Prisma, Nest y HTTP, que ya están en inglés. Lo que se descarta es traducir a mitad de camino —un `/torneos` sirviendo un `TournamentsController` sobre la tabla `tournaments`—, que obliga a saber en qué idioma está cada capa antes de escribir una línea.
+
+**Consecuencias**: la traducción entre una superficie y la otra vive en la capa `services/` de `apps/web`, y queda anotada en `apps/web/docs/API.md`: una pantalla no asume que su URL y su endpoint se llamen igual. La prosa sigue en español en todos lados —los docs, los mensajes de commit, y el dominio hablado ("torneo", "inscripción")—; lo que cambia de idioma son los identificadores. **No hay nada que migrar**: todavía no existe ningún endpoint, y por eso se cierra ahora y no cuando haya diez. `docs/agents.md` corrige su ejemplo de path (`apps/api/src/tournaments/`) por la misma razón.
+
 ## 2026-08-14 — Documentación de la API con Swagger (`@nestjs/swagger`)
 
 **Contexto**: el contrato de la API está escrito (`docs/api-conventions.md`, specs de `api-designer`) pero no hay nada ejecutable: `apps/web` va a consumir endpoints que solo existen en prosa, y no hay forma de probar una ruta sin escribir el `curl` a mano. Entra **antes** de la primera feature a propósito — retro-documentar diez endpoints cuesta mucho más que nacer documentados, y hoy la superficie es un controller de scaffold.
