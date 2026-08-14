@@ -13,7 +13,7 @@ export const JWT_SECURITY_SCHEME = 'jwt';
 /**
  * Las tres clases de endpoint de `docs/api-conventions.md`. Todo controller declara
  * la suya con `@ApiTags(API_TAGS.x)` — no strings sueltos, que es como el doc termina
- * con "torneos", "Torneos" y "tournaments" como tres tags distintos.
+ * con "tournaments", "Tournaments" y "tournament" como tres tags distintos.
  */
 export const API_TAGS = {
   club: 'club',
@@ -79,7 +79,7 @@ export function buildSwaggerDocument(app: INestApplication): OpenAPIObject {
     .build();
 
   return SwaggerModule.createDocument(app, config, {
-    // El default es `TorneosController_findAll`. Sacarle el sufijo deja nombres
+    // El default es `TournamentsController_findAll`. Sacarle el sufijo deja nombres
     // usables en un cliente generado sin caer en el `findAll` pelado, que colisiona
     // en cuanto dos controllers tengan el mismo nombre de método.
     operationIdFactory: (controllerKey, methodKey) =>
