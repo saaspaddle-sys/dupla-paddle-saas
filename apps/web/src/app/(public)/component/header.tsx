@@ -19,13 +19,19 @@ export default function Header() {
 
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium ">
             <Link
+              href="/"
+              className="text-text-dark-muted hover:text-padel-green transition-colors"
+            >
+              Inicio
+            </Link>
+            <Link
               href="/torneos"
               className="text-text-dark-muted hover:text-padel-green transition-colors"
             >
               Torneos
             </Link>
             <Link
-              href="/jugadores"
+              href="/players"
               className="text-text-dark-muted hover:text-padel-green transition-colors"
             >
               Jugadores
