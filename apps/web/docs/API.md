@@ -12,12 +12,12 @@ Cómo `apps/web` va a consumir la API. **Las reglas del contrato no se definen a
 
 De `docs/api-conventions.md`, y aplica al frontend aunque lo implemente el backend:
 
-- **Rutas REST con sustantivos en plural y kebab-case** (`/torneos`, `/inscripciones`), con un nivel de anidamiento como máximo.
+- **Rutas REST con sustantivos en plural, en inglés y en kebab-case** (`/tournaments`, `/registrations`), con un nivel de anidamiento como máximo. Ojo con la asimetría: las **URLs públicas de Next siguen en español** (`/torneos`, `/jugadores`) — es el código el que va en inglés, no la navegación (`CLAUDE.md` raíz, sección "Idioma").
 - **Tres clases de endpoint**, y el frontend consume cada una distinto:
   1. **Del club** — requiere JWT del staff. Son las pantallas del panel del club.
   2. **Público** — sin auth, solo lectura. Es la superficie que ve la mayoría de los jugadores.
   3. **De plataforma** — operaciones sobre `Player`, que es global.
-- **Códigos de error HTTP**: `400` validación, `401` sin autenticar, `403` autenticado sin permiso, `404` no existe, `409` conflicto. El manejo de errores del cliente se construye sobre estos códigos, no sobre strings de mensaje.
+- **Códigos de error HTTP**: `400` validación, `401` sin autenticar, `403` autenticado sin permiso, `404` no existe, `409` conflicto. El manejo de errores del cliente se construye sobre estos códigos y sobre el `code` del body (inglés, estable), **no** sobre el `message` — ese viene en inglés y es para debug/logging. El copy en español que ve el usuario lo pone el frontend, mapeando el `code`.
 
 ## Invariante de tenancy — la regla que no se rompe
 
@@ -42,14 +42,18 @@ En la práctica, para quien escriba la capa `services/`:
 
 Lo que realmente falta, con dónde se va a registrar cuando se decida:
 
-| Tema                                                             | Estado                                                                             |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Shape uniforme de error                                          | Lo define la primera feature que llegue ahí, y lo documenta en `docs/decisions.md` |
-| Almacenamiento del token (cookie `httpOnly` vs. storage cliente) | A decidir con el backend; va a `docs/decisions.md`                                 |
-| Refresh token y vencimiento de sesión                            | A decidir con el backend                                                           |
-| Protección de rutas privadas en Next (proxy vs. layout guard)    | A decidir; ver `node_modules/next/dist/docs/01-app/02-guides/` antes de elegir     |
-| Paginación de listas que crecen sin techo                        | La declara la spec de cada endpoint (`docs/api-conventions.md`)                    |
+| Tema                                                             | Estado                                                                                                                                       |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shape uniforme de error                                          | **Resuelto** — `{ statusCode, code, message, details }`, siempre las cuatro claves. `docs/decisions.md`, "Shape de error uniforme de la API" |
+| Almacenamiento del token (cookie `httpOnly` vs. storage cliente) | A decidir con el backend; va a `docs/decisions.md` cuando se implemente el login (`/auth/login`)                                             |
+| Refresh token y vencimiento de sesión                            | A decidir con el backend                                                                                                                     |
+| Protección de rutas privadas en Next (proxy vs. layout guard)    | A decidir; ver `node_modules/next/dist/docs/01-app/02-guides/` antes de elegir                                                               |
+| Paginación de listas que crecen sin techo                        | La declara la spec de cada endpoint (`docs/api-conventions.md`)                                                                              |
 
 ## Endpoints
 
-Ninguno integrado todavía. Cuando se diseñe una feature, el contrato lo produce el agente `api-designer` (ver `docs/agents.md`) siguiendo `docs/api-conventions.md`; acá se documenta cómo lo consume el frontend, no el contrato en sí.
+Ninguno integrado en `apps/web` todavía — este documento sigue describiendo solo el lado del cliente, ver "Estado actual" arriba. Un contrato ya existe del lado de la API y está listo para consumirse cuando se construya la pantalla:
+
+- **`POST /auth/register`** — de plataforma, sin auth. Registra un jugador; según el DNI, crea un perfil nuevo o reclama uno que ya había cargado un club (dedup, `docs/decisions.md`). Devuelve `201` con `{ outcome: 'created' | 'claimed', user: { id, email }, player: { id, firstName, lastName, category, gender, createdAt } }`. **Con `outcome: 'claimed'`, `firstName`/`lastName`/`category` no son necesariamente un eco de lo que mandó el form** — pueden ser los datos que cargó el club al pre-inscribir al jugador; la UI puede usar esto para mostrar "ya teníamos tu perfil". Nunca incluye `dni` ni `passwordHash`. Errores relevantes: `409 email_registered`, `409 dni_has_account`, `400 validation`.
+
+El resto de una feature nueva sigue el flujo habitual: el contrato lo produce el agente `api-designer` (ver `docs/agents.md`) siguiendo `docs/api-conventions.md`; acá se documenta cómo lo consume el frontend, no el contrato en sí.

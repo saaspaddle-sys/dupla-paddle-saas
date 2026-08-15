@@ -19,6 +19,8 @@ model User {
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  player Player?
+
   @@map("users")
 }
 
@@ -27,4 +29,29 @@ enum UserStatus {
   suspended
 
   @@map("user_status")
+}
+
+model Player {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  userId    String?       @unique @map("user_id") @db.Uuid
+  dni       String        @unique
+  firstName String        @map("first_name")
+  lastName  String        @map("last_name")
+  email     String?
+  category  String?
+  gender    PlayerGender?
+  birthDate DateTime?     @map("birth_date") @db.Date
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("players")
+}
+
+enum PlayerGender {
+  male
+  female
+
+  @@map("player_gender")
 }
