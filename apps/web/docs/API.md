@@ -12,7 +12,7 @@ Cómo `apps/web` va a consumir la API. **Las reglas del contrato no se definen a
 
 De `docs/api-conventions.md`, y aplica al frontend aunque lo implemente el backend:
 
-- **Rutas REST con sustantivos en plural, en inglés y en kebab-case** (`/tournaments`, `/registrations`), con un nivel de anidamiento como máximo. Ojo con la asimetría: las **URLs públicas de Next siguen en español** (`/torneos`, `/jugadores`) — es el código el que va en inglés, no la navegación (`CLAUDE.md` raíz, sección "Idioma").
+- **Rutas REST con sustantivos en plural, en inglés y en kebab-case** (`/tournaments`, `/registrations`), con un nivel de anidamiento como máximo. Ojo con la asimetría, que acá es donde se siente: las **URLs públicas de Next siguen en español** (`/torneos`, `/jugadores`) y el endpoint que las alimenta va en inglés (`/tournaments`) — es el código el que va en inglés, no la navegación (`CLAUDE.md` raíz, sección "Idioma"). La capa `services/` es la que traduce; una pantalla no asume que su URL y su endpoint se llaman igual.
 - **Tres clases de endpoint**, y el frontend consume cada una distinto:
   1. **Del club** — requiere JWT del staff. Son las pantallas del panel del club.
   2. **Público** — sin auth, solo lectura. Es la superficie que ve la mayoría de los jugadores.

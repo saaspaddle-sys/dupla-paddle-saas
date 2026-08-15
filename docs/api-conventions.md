@@ -10,12 +10,12 @@ Esto aplica a `apps/api` y a `apps/web` por igual. Única excepción, ya decidid
 
 ## Estructura
 
-- **Un módulo por dominio de negocio** en `src/<dominio>/`, importado en `AppModule`.
+- **Un módulo por dominio de negocio** en `src/<dominio>/`, importado en `AppModule`. La carpeta se llama como el recurso que expone, en inglés: `src/tournaments/` sirve `/tournaments`.
 - Un módulo no importa clases internas de otro: consume solo lo que el otro declara en sus `exports`.
 
 ## Rutas
 
-- REST con **sustantivos en plural**, en inglés y en kebab-case: `/tournaments`, `/registrations`, `/match-sets`.
+- REST con **sustantivos en plural**, en inglés y en kebab-case: `/tournaments`, `/registrations`, `/match-sets`. Las URLs públicas de `apps/web` van en **español** (`/torneos`, `/jugadores`) — son dos superficies distintas y no una inconsistencia: la API la consume código, las URLs las lee un jugador (`docs/decisions.md`, 2026-08-14).
 - **Un nivel de anidamiento como máximo**: `/tournaments/:id/registrations` está bien; `/clubs/:id/tournaments/:id/registrations/:id` no. Si necesitás más profundidad, el recurso anidado probablemente merece ser propio.
 - El `club_id` **nunca** aparece en la ruta de un endpoint del club — sale del usuario autenticado (ver abajo).
 
@@ -43,3 +43,13 @@ Todo endpoint pertenece a una de estas tres, y la spec lo declara explícitament
 ## Listas
 
 Si un endpoint devuelve una colección que puede crecer sin techo (inscripciones de un torneo, jugadores), la spec declara la estrategia de paginación en vez de devolver todo. Si devuelve algo acotado por naturaleza (las canchas de un club), decilo explícitamente para que no quede como olvido.
+
+## Documentación (OpenAPI)
+
+La API se autodocumenta con `@nestjs/swagger`: UI en `/docs`, documento en `/docs/json`. El setup vive en `apps/api/src/swagger/swagger.setup.ts`. Documentar es parte del contrato, no un extra — un endpoint que no aparece en `/docs` no existe para el resto del equipo ni para el frontend.
+
+- **`@ApiTags` con la clase del endpoint**, tomada de `API_TAGS` (`club`, `public`, `platform`), nunca un string suelto. Es lo que hace que la doc se lea agrupada por las tres clases de arriba, y obliga a decidir la clase al escribir el controller y no al revisarlo.
+- **`@ApiOperation({ summary })`** en cada handler: una línea diciendo qué hace.
+- **Respuestas declaradas con su DTO de respuesta** — el caso feliz (`@ApiOkResponse`, `@ApiCreatedResponse`) y los errores que el cliente maneja distinto (`404`, `409`, …). Nunca se declara una entidad interna como respuesta, por la misma razón que no se la devuelve.
+- **Los endpoints autenticados llevan `@ApiBearerAuth('jwt')`**, con el mismo nombre de security scheme que declara el setup (`JWT_SECURITY_SCHEME`). Si no coincide, Swagger UI no manda el header y el "Try it out" da `401` sin explicar por qué.
+- **Los campos de los DTOs no se decoran a mano.** El plugin de `@nestjs/swagger` (activo en `nest-cli.json`) infiere tipo, requerido/opcional y descripción —del JSDoc de la propiedad— para todo archivo `*.dto.ts`. `@ApiProperty` queda para lo que el tipo no dice: `example`, `format`, o fijar un enum.

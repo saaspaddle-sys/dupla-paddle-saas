@@ -43,7 +43,7 @@ Reglas que valen para todos:
 - **Un agente, una tarea.** No le pidas a `debugger` que además refactorice, ni a `test-engineer` que "de paso" agregue el endpoint que falta. Su prompt les prohíbe el trabajo lateral y con razón: mezclar diagnóstico e implementación es exactamente cómo se arma un PR imposible de revisar.
 - **Decí qué NO tocar.** Es la instrucción con mejor relación esfuerzo/beneficio que existe.
 - **No repitas lo que ya está en los docs.** El contexto de producto, el invariante de tenancy y las convenciones ya se cargan solos. Repetirlos gasta contexto y, peor, si tu versión de memoria difiere de la del doc, generás una contradicción.
-- **Pasá rutas de archivo, no descripciones.** `revisá apps/api/src/torneos/` rinde muchísimo más que `revisá el módulo de torneos`.
+- **Pasá rutas de archivo, no descripciones.** `revisá apps/api/src/tournaments/` rinde muchísimo más que `revisá el módulo de torneos`.
 
 ## Contexto entre agentes: el handoff es tuyo
 

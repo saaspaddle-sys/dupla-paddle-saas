@@ -115,12 +115,12 @@ Si `db:verify` marca drift, el arreglo es generar la migración que falta con `p
 ```ts
 @Module({
   imports: [PrismaModule],
-  providers: [TorneosService],
+  providers: [TournamentsService],
 })
-export class TorneosModule {}
+export class TournamentsModule {}
 
 @Injectable()
-export class TorneosService {
+export class TournamentsService {
   constructor(private readonly prisma: PrismaService) {}
 }
 ```
