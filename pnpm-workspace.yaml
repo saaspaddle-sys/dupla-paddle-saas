@@ -3,6 +3,8 @@ packages:
 
 allowBuilds:
   "@prisma/engines": true
+  # Telemetría que arrastra swagger-ui-dist (vía @nestjs/swagger): no corre su postinstall.
+  "@scarf/scarf": false
   prisma: true
   sharp: true
   unrs-resolver: true

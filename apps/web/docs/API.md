@@ -12,7 +12,7 @@ Cómo `apps/web` va a consumir la API. **Las reglas del contrato no se definen a
 
 De `docs/api-conventions.md`, y aplica al frontend aunque lo implemente el backend:
 
-- **Rutas REST con sustantivos en plural y kebab-case** (`/torneos`, `/inscripciones`), con un nivel de anidamiento como máximo.
+- **Rutas REST con sustantivos en plural, en inglés y kebab-case** (`/tournaments`, `/inscriptions`), con un nivel de anidamiento como máximo. Ojo con la asimetría, que acá es donde se siente: las URLs públicas de este paquete son en **español** (`/torneos`), y el endpoint que las alimenta es en **inglés** (`/tournaments`). La capa `services/` es la que traduce; una pantalla no asume que su URL y su endpoint se llaman igual.
 - **Tres clases de endpoint**, y el frontend consume cada una distinto:
   1. **Del club** — requiere JWT del staff. Son las pantallas del panel del club.
   2. **Público** — sin auth, solo lectura. Es la superficie que ve la mayoría de los jugadores.

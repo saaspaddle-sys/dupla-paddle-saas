@@ -6,7 +6,7 @@ El contexto que aplica a todo el repo (producto, invariante de tenancy, workflow
 
 ## Estado del código
 
-`AppController`/`AppService` siguen siendo el scaffold de NestJS devolviendo `"Hello World!"`. Lo que ya no es scaffold: `AppModule` importa `ConfigModule` (global, carga el `.env` de la raíz del monorepo) y `PrismaModule`; hay una sola entidad, `User` (tabla `users`), migrada. El resto de `docs/decisions.md` sigue sin implementar.
+`AppController`/`AppService` siguen siendo el scaffold de NestJS devolviendo `"Hello World!"`. Lo que ya no es scaffold: `AppModule` importa `ConfigModule` (global, carga el `.env` de la raíz del monorepo) y `PrismaModule`; hay una sola entidad, `User` (tabla `users`), migrada; y `main.ts` monta Swagger antes de `listen()` (ver abajo). El resto de `docs/decisions.md` sigue sin implementar.
 
 En concreto, esto todavía no existe — verificá antes de importarlo, y creálo como parte de la feature que lo necesite por primera vez:
 
@@ -35,6 +35,15 @@ Corré `db:verify` antes de commitear cualquier cambio en `prisma/`: `migrate de
 Todo comando de Prisma va vía `pnpm --filter api exec` (o los scripts de la raíz), **nunca `npx prisma` desde otro directorio**: `prisma.config.ts` resuelve el `.env` como `../../.env` asumiendo `cwd == apps/api`, y desde la raíz falla con un error de datasource que no dice nada del cwd.
 
 El cliente se genera en `apps/api/src/generated/prisma/` — **no se commitea** (está en `.gitignore`, `.prettierignore` y en los `ignores` de `eslint.config.mjs`). Se regenera solo con `pnpm install` (hay un `postinstall` en este paquete) o a mano con `pnpm run db:generate`; si TypeScript se queja de que no encuentra `../generated/prisma/client`, es señal de que falta correrlo. `PrismaService` (`src/prisma/`) extiende `PrismaClient` con el driver adapter de `@prisma/adapter-pg` — Prisma 7 lo exige, ya no hay motor embebido por default.
+
+## Swagger
+
+El setup vive en `src/swagger/swagger.setup.ts` y lo llama `main.ts` **antes de `listen()`**. No es un módulo de Nest a propósito (ver `docs/decisions.md`, entrada del 2026-08-14). Lo que decora un endpoint —tags, `@ApiOperation`, respuestas, `@ApiBearerAuth`— es regla de contrato y vive en `docs/api-conventions.md`, sección "Documentación (OpenAPI)": no se repite acá.
+
+- UI en `http://localhost:3000/docs`; documento en `/docs/json` y `/docs/yaml`.
+- Se sirve salvo con `NODE_ENV=production`. `SWAGGER_ENABLED=true|false` (en el `.env` de la raíz) fuerza cualquiera de los dos lados.
+- **El plugin de `@nestjs/swagger` está activo** en `nest-cli.json` (`introspectComments: true`) — por eso los DTOs no llevan un `@ApiProperty` por campo. Corre en `nest build` y `nest start`, **no bajo ts-jest**: un test que construya el documento va a ver los DTOs sin la metadata inferida, y eso es esperado, no un bug del test. Si alguna vez hace falta ahí, se genera con `metadataDestination` + `SwaggerModule.loadPluginMetadata()`.
+- La doc se monta sobre la app en `main.ts`, no en `AppModule`, así que los e2e **no la ven** salvo que llamen `setupSwagger(app)` antes de `init()` — `test/swagger.e2e-spec.ts` es el ejemplo.
 
 ## Comandos
 
