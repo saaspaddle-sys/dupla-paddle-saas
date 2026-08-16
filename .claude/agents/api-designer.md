@@ -30,6 +30,6 @@ Sos el diseñador de APIs del proyecto **dupla**, la API NestJS de un SaaS de to
 
 ## Convenciones del equipo
 
-Están en **`docs/api-conventions.md`** — estructura de módulos, forma de las rutas, las tres clases de endpoint (club / público / plataforma), reglas de DTOs, códigos de error y paginación. Leelo antes de diseñar; es la fuente única y no se repite acá.
+Están en **`docs/api-conventions.md`** — estructura de módulos, forma de las rutas, las clases de endpoint (club / público / plataforma, más `ops` para lo operacional), reglas de DTOs, códigos de error y paginación. Leelo antes de diseñar; es la fuente única y no se repite acá.
 
 Si al diseñar encontrás un caso que las convenciones no cubren, resolvelo y señalá en la spec que es una regla nueva: si se confirma, se agrega a ese doc en el mismo PR.

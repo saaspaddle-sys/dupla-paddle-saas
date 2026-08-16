@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { AppExceptionFilter } from './common/filters/http-exception.filter';
 import { validationExceptionFactory } from './common/pipes/validation-exception.factory';
+import { HealthModule } from './health/health.module';
 import { PlayersModule } from './players/players.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -15,6 +16,7 @@ import { PrismaModule } from './prisma/prisma.module';
       envFilePath: resolve(process.cwd(), '../../.env'),
     }),
     PrismaModule,
+    HealthModule,
     PlayersModule,
   ],
   providers: [

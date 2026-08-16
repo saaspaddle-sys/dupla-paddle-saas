@@ -19,13 +19,14 @@ Esto aplica a `apps/api` y a `apps/web` por igual. Única excepción, ya decidid
 - **Un nivel de anidamiento como máximo**: `/tournaments/:id/registrations` está bien; `/clubs/:id/tournaments/:id/registrations/:id` no. Si necesitás más profundidad, el recurso anidado probablemente merece ser propio.
 - El `club_id` **nunca** aparece en la ruta de un endpoint del club — sale del usuario autenticado (ver abajo).
 
-## Las tres clases de endpoint
+## Las clases de endpoint
 
-Todo endpoint pertenece a una de estas tres, y la spec lo declara explícitamente:
+Todo endpoint pertenece a una de estas, y la spec lo declara explícitamente. Las tres primeras son de negocio y son la decisión importante; la cuarta es operacional:
 
 1. **Del club** — requiere JWT de staff. El scoping es por el `club_id` del usuario autenticado, **nunca** por un `club_id` que venga del body, params o query. Es el invariante de tenancy del producto (`docs/decisions.md`): un club viendo datos de otro es el peor bug posible de este SaaS.
 2. **Público** — la vista gratuita para jugadores (torneos, llaves, resultados, perfiles). Solo lectura, sin auth, y sin exponer datos internos del club.
 3. **De plataforma** — operaciones sobre `Player`, que es global y no tiene `club_id`. Definí quién puede crear y editar, y cómo se evitan los duplicados (buscar antes de crear).
+4. **Operacional (`ops`)** — lo consume la infraestructura, no un usuario ni el frontend: hoy solo `GET /health`. Sin auth (un readiness probe corre antes de que exista una sesión) y **sin datos de negocio** — si un endpoint `ops` necesita devolver algo del dominio, está mal clasificado. Es la única clase donde una ruta puede no ser un sustantivo plural: `/health` es incontable, y `/healths` sería peor.
 
 ## DTOs
 
@@ -35,7 +36,7 @@ Todo endpoint pertenece a una de estas tres, y la spec lo declara explícitament
 
 ## Errores
 
-- Códigos HTTP correctos y específicos: `400` validación, `401` sin autenticar, `403` autenticado pero sin permiso, `404` no existe, `409` conflicto (duplicados, estado inválido).
+- Códigos HTTP correctos y específicos: `400` validación, `401` sin autenticar, `403` autenticado pero sin permiso, `404` no existe, `409` conflicto (duplicados, estado inválido), `503` una dependencia no responde y la API sí (es el caso de `/health` con Postgres caído — un `500` ahí diría "la API se rompió", que es otra cosa).
 - Se usan las excepciones de Nest (`NotFoundException`, `ConflictException`, …), no respuestas armadas a mano.
 - **Mismo shape de error en toda la API**, y sin filtrar detalles internos al cliente (stack traces, mensajes de la base). Establecido por el registro de jugador (slice 1): `{ statusCode, code, message, details }`, siempre las cuatro claves (`details: null` cuando no aplica), vía `AppExceptionFilter` (`apps/api/src/common/filters/http-exception.filter.ts`). Detalle completo en `docs/decisions.md`, "Shape de error uniforme de la API".
 - `code` es un identificador estable en **inglés** snake_case (`dni_has_account`, `email_registered`, `validation`) — es lo que el frontend mapea a copy en español. `message` también va en inglés: es texto para debug/logging, no contrato de UI.
@@ -48,7 +49,7 @@ Si un endpoint devuelve una colección que puede crecer sin techo (inscripciones
 
 La API se autodocumenta con `@nestjs/swagger`: UI en `/docs`, documento en `/docs/json`. El setup vive en `apps/api/src/swagger/swagger.setup.ts`. Documentar es parte del contrato, no un extra — un endpoint que no aparece en `/docs` no existe para el resto del equipo ni para el frontend.
 
-- **`@ApiTags` con la clase del endpoint**, tomada de `API_TAGS` (`club`, `public`, `platform`), nunca un string suelto. Es lo que hace que la doc se lea agrupada por las tres clases de arriba, y obliga a decidir la clase al escribir el controller y no al revisarlo.
+- **`@ApiTags` con la clase del endpoint**, tomada de `API_TAGS` (`club`, `public`, `platform`, `ops`), nunca un string suelto. Es lo que hace que la doc se lea agrupada por las clases de arriba, y obliga a decidir la clase al escribir el controller y no al revisarlo.
 - **`@ApiOperation({ summary })`** en cada handler: una línea diciendo qué hace.
 - **Respuestas declaradas con su DTO de respuesta** — el caso feliz (`@ApiOkResponse`, `@ApiCreatedResponse`) y los errores que el cliente maneja distinto (`404`, `409`, …). Nunca se declara una entidad interna como respuesta, por la misma razón que no se la devuelve.
 - **Los endpoints autenticados llevan `@ApiBearerAuth('jwt')`**, con el mismo nombre de security scheme que declara el setup (`JWT_SECURITY_SCHEME`). Si no coincide, Swagger UI no manda el header y el "Try it out" da `401` sin explicar por qué.
