@@ -13,7 +13,7 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold tracking-tight text-padel-green">
-              Pádel<span className="text-[var(--background)]">SAAS</span>
+              Pádel<span className="text-var(--background)">SAAS</span>
             </span>
           </div>
 
