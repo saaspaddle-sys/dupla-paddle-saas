@@ -28,6 +28,7 @@ Acá se documenta **cómo está construido el frontend**. Lo que aplica a todo e
 - `Architecture.md`: estructura de carpetas, patrones y navegación.
 - `Frontend.md`: inventario técnico de componentes, layouts y convenciones.
 - `API.md`: cómo consume la API el frontend; el contrato sale de `docs/api-conventions.md`.
+- `LoginIntegration.md`: guía paso a paso para conectar el `LoginModal` a `POST /auth/login` / `GET /auth/me` (la API ya está lista, el consumo desde `apps/web` todavía no).
 - `UserManual.md`: guía de uso para usuario final.
 - `DesignSystem.md`: sistema visual y lineamientos de UI.
 - `ReleaseNotes.md`: historial de cambios por versión.
