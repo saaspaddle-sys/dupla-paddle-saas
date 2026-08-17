@@ -11,14 +11,18 @@ export const SWAGGER_PATH = 'docs';
 export const JWT_SECURITY_SCHEME = 'jwt';
 
 /**
- * Las tres clases de endpoint de `docs/api-conventions.md`. Todo controller declara
+ * Las clases de endpoint de `docs/api-conventions.md`. Todo controller declara
  * la suya con `@ApiTags(API_TAGS.x)` — no strings sueltos, que es como el doc termina
  * con "tournaments", "Tournaments" y "tournament" como tres tags distintos.
+ *
+ * `ops` es la cuarta y no es de negocio: endpoints que consume la infraestructura
+ * (`/health`), no un usuario ni el frontend.
  */
 export const API_TAGS = {
   club: 'club',
   public: 'public',
   platform: 'platform',
+  ops: 'ops',
 } as const;
 
 /**
@@ -75,6 +79,10 @@ export function buildSwaggerDocument(app: INestApplication): OpenAPIObject {
     .addTag(
       API_TAGS.platform,
       'Entidades globales de plataforma (`Player`), sin `club_id`.',
+    )
+    .addTag(
+      API_TAGS.ops,
+      'Operacionales, para la infraestructura (health checks). Sin auth y sin datos de negocio.',
     )
     .build();
 

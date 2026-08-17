@@ -51,7 +51,7 @@ El modelo `User` es la plantilla a seguir para toda tabla nueva:
 
 ### `apps/api/src/prisma/prisma.service.ts` y `prisma.module.ts`
 
-`PrismaService` extiende `PrismaClient` pasándole un `PrismaPg` (driver adapter de `@prisma/adapter-pg`) construido con la `DATABASE_URL` que resuelve `ConfigService.getOrThrow`. Prisma 7 exige un adapter explícito — ya no hay motor embebido por default. Implementa `OnModuleInit`/`OnModuleDestroy` para conectar y desconectar el pool con el ciclo de vida de Nest.
+`PrismaService` extiende `PrismaClient` pasándole un `PrismaPg` (driver adapter de `@prisma/adapter-pg`) construido con la `DATABASE_URL` que resuelve `ConfigService.getOrThrow`. Prisma 7 exige un adapter explícito — ya no hay motor embebido por default. Implementa `OnModuleInit`/`OnModuleDestroy` para atar el pool al ciclo de vida de Nest, pero los dos extremos no son simétricos: el `$disconnect()` del destroy cierra el pool de verdad, mientras que el `$connect()` del init **no verifica que la base sea alcanzable**. Con driver adapter el pool de `pg` es lazy y no abre socket hasta la primera query, así que la API arranca perfecto con Postgres apagado —`Nest application successfully started`, `/docs` respondiendo— y recién falla en el primer request que toca la DB: 500 `internal_error` al cliente, con el `ECONNREFUSED` solo en el log del server. **Un arranque limpio no dice nada sobre el estado de la base**: eso lo contesta `GET /health` (`src/health/`), que corre un `SELECT 1` y devuelve 503 `database_unavailable` si no llega.
 
 `PrismaModule` exporta `PrismaService` pero **no es `@Global()`** — cada módulo de feature que necesite la DB tiene que importar `PrismaModule` explícitamente, no asumir que está disponible.
 
@@ -150,6 +150,7 @@ Es la única barrera que cubre a todo el equipo, independiente de qué editor o 
 | ----------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `Cannot find module '../generated/prisma/client'`     | Falta generar el cliente                               | `pnpm run db:generate`                                                            |
 | `Can't reach database server at localhost:5432`       | Docker apagado o Postgres no levantado                 | `pnpm run db:up`                                                                  |
+| La API arranca bien pero todo endpoint da 500         | Igual que la fila de arriba — el arranque no conecta   | `curl localhost:3000/health` para confirmarlo, después `pnpm run db:up`           |
 | Jest queda colgado, warning de "open handles"         | Un e2e sin `await app.close()`                         | Agregar el `afterAll` que cierra la app                                           |
 | `ExperimentalWarning: VM Modules` en la salida de e2e | Esperado — ver arriba                                  | Ninguno, no sacar el flag                                                         |
 | `db:verify` falla en el paso de `migrate diff`        | Editaste `schema.prisma` y falta generar la migración  | `pnpm run db:migrate` — nunca editando el `.sql` de una migración ya commiteada   |

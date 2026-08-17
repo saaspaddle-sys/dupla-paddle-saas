@@ -1,4 +1,9 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // `prisma.config.ts` se excluye para que el build emita `dist/main.js` y no
+  // `dist/src/main.js`: vive en la raíz del paquete, así que incluirlo empuja el
+  // `rootDir` inferido un nivel para arriba y desplaza todo el output — con eso,
+  // el `node dist/main` de `start:prod` apunta a un archivo que no existe.
+  // El CLI de Prisma lee el `.ts` de la raíz, no una versión compilada.
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "prisma.config.ts"]
 }
