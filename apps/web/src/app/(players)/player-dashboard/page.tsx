@@ -1,7 +1,7 @@
 //pantalla principal de player que se muestra en el layout a traves de <main>{children}</main>
-'use client'
+"use client";
 
-import Link from 'next/link';
+import Link from "next/link";
 
 export default function PlayerDashboardPage() {
   // Mock de datos del jugador logueado
@@ -15,8 +15,8 @@ export default function PlayerDashboardPage() {
       torneo: "Apertura Anual 2026",
       fecha: "15 - 17 de Marzo",
       lugar: "Complejo El Triunfo",
-      estado: "Inscripto",// este estado debe ser un quizas un Enum inscripto / No inscripto que debe traerse desde la DB. hablar con TOMY
-    }
+      estado: "Inscripto", // este estado debe ser un quizas un Enum inscripto / No inscripto que debe traerse desde la DB. hablar con TOMY
+    },
   };
 
   return (
@@ -31,7 +31,10 @@ export default function PlayerDashboardPage() {
             ¡Hola, {jugador.nombre}! 👋
           </h1>
           <p className="text-gray-400 text-xs md:text-sm mt-1">
-            Categoría: <strong className="text-white">{jugador.categoria}</strong> • Puntos: <strong className="text-padel-green">{jugador.puntos} pts</strong>
+            Categoría:{" "}
+            <strong className="text-white">{jugador.categoria}</strong> •
+            Puntos:{" "}
+            <strong className="text-padel-green">{jugador.puntos} pts</strong>
           </p>
         </div>
 
@@ -46,7 +49,6 @@ export default function PlayerDashboardPage() {
 
       {/* Cards de Estado y Próximos Eventos */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        
         {/* Card: Próximo Torneo */}
         <div className="md:col-span-2 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
           <div className="flex justify-between items-center">
@@ -74,17 +76,20 @@ export default function PlayerDashboardPage() {
             Posición Oficial
           </span>
           <div className="my-3">
-            <span className="text-4xl font-black text-gray-900">#{jugador.ranking}</span>
-            <p className="text-xs text-gray-400 font-medium mt-1">En el ranking de la categoría</p>
+            <span className="text-4xl font-black text-gray-900">
+              #{jugador.ranking}
+            </span>
+            <p className="text-xs text-gray-400 font-medium mt-1">
+              En el ranking de la categoría
+            </p>
           </div>
-          <Link 
-            href="/ranking" 
+          <Link
+            href="/ranking"
             className="text-xs font-bold text-padel-green-title hover:underline flex items-center gap-1"
           >
             Ver tabla completa <span>→</span>
           </Link>
         </div>
-
       </div>
     </div>
   );

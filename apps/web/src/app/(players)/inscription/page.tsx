@@ -1,3 +1,3 @@
-export default function Inscription(){
-    return 'PAGINA EN CONTRUCCION'
+export default function Inscription() {
+  return "PAGINA EN CONTRUCCION";
 }

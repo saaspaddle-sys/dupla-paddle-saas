@@ -26,7 +26,10 @@ export function formatearFecha(fechaStr: string | Date): string {
 }
 
 /** Calcula la fecha de vencimiento sumando los días de vigencia */
-export function calcularFechaVencimiento(fechaExpedicion: string, diasVigencia: number): Date {
+export function calcularFechaVencimiento(
+  fechaExpedicion: string,
+  diasVigencia: number,
+): Date {
   const fecha = new Date(fechaExpedicion);
   fecha.setUTCDate(fecha.getUTCDate() + diasVigencia);
   return fecha;
