@@ -6,7 +6,7 @@ El contexto que aplica a todo el repo (producto, invariante de tenancy, workflow
 
 ## Estado del código
 
-El scaffold `app.controller.ts`/`app.service.ts` (y sus specs) ya no existe — se borró cuando entró el primer módulo real, siguiendo la regla de abajo. `AppModule` importa `ConfigModule` (global, carga el `.env` de la raíz del monorepo), `PrismaModule` y `PlayersModule`, y registra `ValidationPipe` y el filtro de excepciones globales como providers (`APP_PIPE`/`APP_FILTER`, no en `main.ts` — ver por qué en la próxima sección). `main.ts` monta Swagger antes de `listen()` (ver abajo). Hay dos entidades migradas, `User` (`users`) y `Player` (`players`); el resto de `docs/decisions.md` sigue sin implementar.
+El scaffold `app.controller.ts`/`app.service.ts` (y sus specs) ya no existe — se borró cuando entró el primer módulo real, siguiendo la regla de abajo. `AppModule` importa `ConfigModule` (global, carga el `.env` de la raíz del monorepo), `PrismaModule`, `HealthModule` (`GET /health` — ver `docs/database.md`, y la entrada del 2026-08-16 en `docs/decisions.md`) y `PlayersModule`, y registra `ValidationPipe` y el filtro de excepciones globales como providers (`APP_PIPE`/`APP_FILTER`, no en `main.ts` — ver por qué en la próxima sección). `main.ts` monta Swagger antes de `listen()` (ver abajo). Hay dos entidades migradas, `User` (`users`) y `Player` (`players`); el resto de `docs/decisions.md` sigue sin implementar.
 
 En concreto, esto todavía no existe — verificá antes de importarlo, y creálo como parte de la feature que lo necesite por primera vez:
 
@@ -92,4 +92,4 @@ El resto de la config que vale la pena conocer:
 
 ## Convenciones para módulos nuevos
 
-**`docs/api-conventions.md` es la referencia del contrato** — estructura de módulo, forma de las rutas, reglas de DTOs, códigos de error, y las tres clases de endpoint en las que toda ruta se tiene que declarar (club / public / platform). Leelo antes de diseñar o revisar un endpoint. Es la fuente única: no repitas sus reglas acá ni en un prompt de agente.
+**`docs/api-conventions.md` es la referencia del contrato** — estructura de módulo, forma de las rutas, reglas de DTOs, códigos de error, y las clases de endpoint en las que toda ruta se tiene que declarar (club / public / platform, más `ops` para lo operacional). Leelo antes de diseñar o revisar un endpoint. Es la fuente única: no repitas sus reglas acá ni en un prompt de agente.

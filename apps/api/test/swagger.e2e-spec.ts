@@ -40,7 +40,7 @@ describe('Swagger (e2e)', () => {
     expect(document.info.title).toBe('dupla API');
   });
 
-  it('declara las tres clases de endpoint como tags', () => {
+  it('declara todas las clases de endpoint como tags', () => {
     const tags = (document.tags ?? []).map((tag) => tag.name);
     expect(tags).toEqual(expect.arrayContaining(Object.values(API_TAGS)));
   });
