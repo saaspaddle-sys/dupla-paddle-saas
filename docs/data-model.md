@@ -31,6 +31,11 @@ erDiagram
         varchar category
         varchar gender "nullable"
         date birth_date "nullable"
+        varchar dominant_hand "nullable"
+        varchar country "nullable, ISO alpha-2"
+        varchar province "nullable"
+        varchar phone "nullable, E.164"
+        varchar emergency_phone "nullable, E.164"
     }
     clubs {
         uuid id PK
@@ -116,7 +121,7 @@ Notas sobre el orden:
 
 - **`users`** — identidad de login (email + contraseña). **Sin rol**: "organizador" se deriva de tener un `club`, "jugador" de tener un `player`. Un mismo usuario puede ser ambos.
 - **`subscriptions`** — suscripción del usuario dueño (1:1). El plan define cuotas (p. ej. `max_tournaments`). Arranca en `pending` (cobro manual); se activa a mano hasta integrar Mercado Pago.
-- **`players`** — perfil global de competidor, **sin `club_id`**. `user_id` nullable: un jugador puede existir sin cuenta (pre-cargado por el organizador) hasta que se registre y reclame el perfil. Es la entidad que habilita historial/ranking cross-club. `dni` es `NOT NULL` y `UNIQUE` — es la clave de dedup (ver "dedup por DNI" en `decisions.md`); nunca sale en una respuesta de la API. `email` es el contacto del perfil (no `@unique`: familias/parejas pueden compartirlo) y es independiente de `users.email`, que es la credencial de login.
+- **`players`** — perfil global de competidor, **sin `club_id`**. `user_id` nullable: un jugador puede existir sin cuenta (pre-cargado por el organizador) hasta que se registre y reclame el perfil. Es la entidad que habilita historial/ranking cross-club. `dni` es `NOT NULL` y `UNIQUE` — es la clave de dedup (ver "dedup por DNI" en `decisions.md`); nunca sale en una respuesta de la API. `email` es el contacto del perfil (no `@unique`: familias/parejas pueden compartirlo) y es independiente de `users.email`, que es la credencial de login. Los datos deportivos (`category`, `gender`, `dominant_hand`) y los de contacto/residencia (`country`, `province`, `phone`, `emergency_phone`) viven acá y no en `users` por la misma razón: son atributos de la persona competidora, y un perfil precargado por un club (sin `user_id`) también los tiene.
 - **`clubs`** — el tenant. `owner_id` → usuario dueño. En el MVP hay un club por dueño (el schema soporta varios).
 
 ### Torneo

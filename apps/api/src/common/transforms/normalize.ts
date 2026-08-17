@@ -33,6 +33,26 @@ export function normalizeText(value: string): string {
   return value.trim();
 }
 
+/**
+ * Saca los separadores con los que se escribe un teléfono a mano
+ * (espacios, guiones, puntos y paréntesis) y deja el `+` inicial. Igual
+ * que `normalizeDni`, a propósito no usa `\D`: "+54 whatsapp" tiene que
+ * seguir siendo inválido en vez de normalizarse a un número que nadie
+ * tipeó.
+ */
+export function normalizePhone(value: string): string {
+  return value.replace(/[.\s()-]/g, '');
+}
+
+/**
+ * Código de país en mayúsculas ("ar" -> "AR"). El valor válido es un
+ * ISO 3166-1 alpha-2; el casing es lo único que se corrige acá, el
+ * formato lo valida el DTO.
+ */
+export function normalizeCountry(value: string): string {
+  return value.trim().toUpperCase();
+}
+
 export function normalizeEmailInput(value: unknown): unknown {
   return typeof value === 'string' ? normalizeEmail(value) : value;
 }
@@ -47,4 +67,12 @@ export function normalizeNameInput(value: unknown): unknown {
 
 export function normalizeTextInput(value: unknown): unknown {
   return typeof value === 'string' ? normalizeText(value) : value;
+}
+
+export function normalizePhoneInput(value: unknown): unknown {
+  return typeof value === 'string' ? normalizePhone(value) : value;
+}
+
+export function normalizeCountryInput(value: unknown): unknown {
+  return typeof value === 'string' ? normalizeCountry(value) : value;
 }

@@ -1,9 +1,11 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import bcrypt from 'bcryptjs';
 import {
+  normalizeCountry,
   normalizeDni,
   normalizeEmail,
   normalizeName,
+  normalizePhone,
   normalizeText,
 } from '../common/transforms/normalize';
 import { Prisma } from '../generated/prisma/client';
@@ -49,6 +51,12 @@ export class PlayersService {
     const birthDate = dto.birthDate
       ? new Date(`${dto.birthDate}T00:00:00.000Z`)
       : null;
+    const country = dto.country ? normalizeCountry(dto.country) : null;
+    const province = dto.province ? normalizeText(dto.province) : null;
+    const phone = dto.phone ? normalizePhone(dto.phone) : null;
+    const emergencyPhone = dto.emergencyPhone
+      ? normalizePhone(dto.emergencyPhone)
+      : null;
 
     // No mantener la transacción abierta durante ~100ms de hashing.
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
@@ -74,6 +82,11 @@ export class PlayersService {
               category,
               gender: dto.gender ?? null,
               birthDate,
+              dominantHand: dto.dominantHand ?? null,
+              country,
+              province,
+              phone,
+              emergencyPhone,
             },
           });
           return toRegisterPlayerResponse(user, player, 'created');
@@ -96,6 +109,10 @@ export class PlayersService {
         // `firstName`/`lastName` son NOT NULL y nunca se pisan — si el
         // club cargó un nombre distinto, se corrige desde la edición de
         // perfil (slice futuro), no en el registro de otra persona.
+        //
+        // Todo campo opcional nuevo del perfil se agrega también acá: si
+        // solo entra en el `create` de arriba, el caso claim descarta en
+        // silencio lo que la persona tipeó en el registro.
         const [claimedPlayer] = await tx.player.updateManyAndReturn({
           where: { id: existingPlayer.id, userId: null },
           data: {
@@ -104,6 +121,12 @@ export class PlayersService {
             category: existingPlayer.category ?? category,
             gender: existingPlayer.gender ?? dto.gender ?? null,
             birthDate: existingPlayer.birthDate ?? birthDate,
+            dominantHand:
+              existingPlayer.dominantHand ?? dto.dominantHand ?? null,
+            country: existingPlayer.country ?? country,
+            province: existingPlayer.province ?? province,
+            phone: existingPlayer.phone ?? phone,
+            emergencyPhone: existingPlayer.emergencyPhone ?? emergencyPhone,
           },
         });
 

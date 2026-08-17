@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsEmail,
   IsEnum,
+  IsISO31661Alpha2,
   IsOptional,
   IsString,
   Matches,
@@ -11,16 +12,23 @@ import {
 } from 'class-validator';
 import { NoBcryptTruncation } from '../../common/validators/no-bcrypt-truncation.validator';
 import {
+  normalizeCountryInput,
   normalizeDniInput,
   normalizeEmailInput,
   normalizeNameInput,
+  normalizePhoneInput,
   normalizeTextInput,
 } from '../../common/transforms/normalize';
 import { IsValidBirthDate } from '../../common/validators/is-valid-birth-date.validator';
-import { PlayerGender } from '../../generated/prisma/enums';
+import { PlayerGender, PlayerHand } from '../../generated/prisma/enums';
 
 // Acentos/ñ (\p{L}\p{M}), apóstrofo, punto, guion y espacio.
 const NAME_REGEX = /^[\p{L}\p{M}'.\- ]+$/u;
+
+// E.164: `+`, código de país que no arranca en 0, y entre 8 y 15 dígitos
+// en total. Es el formato que ya guardamos normalizado, no el que se
+// tipea — el @Transform saca espacios, guiones y paréntesis antes.
+const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 
 export class RegisterPlayerDto {
   @Transform(({ value }: { value: unknown }) => normalizeEmailInput(value))
@@ -96,4 +104,47 @@ export class RegisterPlayerDto {
   @MinLength(1, { message: 'category cannot be empty' })
   @MaxLength(40, { message: 'category must be at most 40 characters' })
   category?: string;
+
+  // Mismo criterio que `gender`: los valores de wire son los del enum de
+  // Prisma (right | left) y el form de apps/web (derecho/izquierdo) mapea
+  // del lado del cliente.
+  @IsOptional()
+  @IsEnum(PlayerHand, { message: 'dominantHand must be right or left' })
+  dominantHand?: PlayerHand;
+
+  // Código ISO 3166-1 alpha-2 ("AR"), no el nombre del país. Con texto
+  // libre terminan conviviendo "Argentina", "argentina" y "ARG" como tres
+  // valores distintos, y ningún filtro por país sirve después.
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizeCountryInput(value))
+  @IsISO31661Alpha2({ message: 'country must be an ISO 3166-1 alpha-2 code' })
+  country?: string;
+
+  // Texto libre, como `category`: normalizar provincias es un problema por
+  // país y no es de este slice.
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizeTextInput(value))
+  @IsString({ message: 'province must be a string' })
+  @MinLength(1, { message: 'province cannot be empty' })
+  @MaxLength(80, { message: 'province must be at most 80 characters' })
+  province?: string;
+
+  // Un solo campo en E.164, con el código de país adentro. El form lo
+  // parte en dos controles (select de código + número), pero eso es UI:
+  // guardado en dos columnas, cualquier búsqueda o dedup por teléfono
+  // tendría que rearmarlo.
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizePhoneInput(value))
+  @Matches(E164_REGEX, {
+    message: 'phone must be in E.164 format, e.g. +5492284123456',
+  })
+  phone?: string;
+
+  // Teléfono de un tercero (contacto ante emergencia), no del jugador.
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizePhoneInput(value))
+  @Matches(E164_REGEX, {
+    message: 'emergencyPhone must be in E.164 format, e.g. +5492284123456',
+  })
+  emergencyPhone?: string;
 }
