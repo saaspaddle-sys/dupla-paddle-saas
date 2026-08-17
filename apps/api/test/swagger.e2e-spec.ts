@@ -52,7 +52,7 @@ describe('Swagger (e2e)', () => {
   });
 
   it('incluye las rutas registradas', () => {
-    expect(Object.keys(document.paths)).toContain('/');
+    expect(Object.keys(document.paths)).toContain('/auth/register');
   });
 
   it('sirve la UI', async () => {

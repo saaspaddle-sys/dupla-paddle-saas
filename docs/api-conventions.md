@@ -2,6 +2,12 @@
 
 Reglas de contrato para los endpoints de `apps/api`. Son conocimiento del proyecto, no de una herramienta: las aplica quien diseña una feature, quien la implementa, quien la revisa y el agente `api-designer`. Si una regla cambia, se cambia acá y el resto la hereda.
 
+## Idioma
+
+**Todo va en inglés, menos los comentarios.** Nombres de archivo, clases, métodos, variables, DTOs, rutas, códigos de error, mensajes de error y descripciones de tests (`describe`/`it`): inglés. Comentarios de código y documentación (`docs/`, `AGENTS.md`, `CLAUDE.md`): español.
+
+Esto aplica a `apps/api` y a `apps/web` por igual. Única excepción, ya decidida y vigente: las **URLs públicas de `apps/web`** siguen en español (`/torneos`, `/jugadores`) porque son navegación de cara al usuario, no identificadores de código — ver `docs/decisions.md`. Las rutas de la API no son ese caso: van en inglés como el resto del código.
+
 ## Estructura
 
 - **Un módulo por dominio de negocio** en `src/<dominio>/`, importado en `AppModule`. La carpeta se llama como el recurso que expone, en inglés: `src/tournaments/` sirve `/tournaments`.
@@ -9,8 +15,8 @@ Reglas de contrato para los endpoints de `apps/api`. Son conocimiento del proyec
 
 ## Rutas
 
-- REST con **sustantivos en plural y en inglés**, en kebab-case: `/tournaments`, `/inscriptions`. Las URLs públicas de `apps/web` van en **español** (`/torneos`, `/jugadores`) — son dos superficies distintas y no una inconsistencia: la API la consume código, las URLs las lee un jugador (`docs/decisions.md`, 2026-08-14).
-- **Un nivel de anidamiento como máximo**: `/tournaments/:id/inscriptions` está bien; `/clubs/:id/tournaments/:id/inscriptions/:id` no. Si necesitás más profundidad, el recurso anidado probablemente merece ser propio.
+- REST con **sustantivos en plural**, en inglés y en kebab-case: `/tournaments`, `/registrations`, `/match-sets`. Las URLs públicas de `apps/web` van en **español** (`/torneos`, `/jugadores`) — son dos superficies distintas y no una inconsistencia: la API la consume código, las URLs las lee un jugador (`docs/decisions.md`, 2026-08-14).
+- **Un nivel de anidamiento como máximo**: `/tournaments/:id/registrations` está bien; `/clubs/:id/tournaments/:id/registrations/:id` no. Si necesitás más profundidad, el recurso anidado probablemente merece ser propio.
 - El `club_id` **nunca** aparece en la ruta de un endpoint del club — sale del usuario autenticado (ver abajo).
 
 ## Las tres clases de endpoint
@@ -25,13 +31,14 @@ Todo endpoint pertenece a una de estas tres, y la spec lo declara explícitament
 
 - **Todo** body, query y param que entra por un controller pasa por un DTO con decoradores de `class-validator`. Nada de `any` ni de objetos sin validar.
 - **DTOs de entrada y de respuesta separados.** Nunca se expone una entidad interna directamente: lo que devuelve la API es una decisión deliberada, no el resultado de serializar el modelo de datos.
-- Ojo con el estado actual del repo: `class-validator` no está instalado y `main.ts` no registra un `ValidationPipe` global. Hasta que ambas cosas existan, **los decoradores no validan nada** — ver `apps/api/AGENTS.md`.
+- Desde el registro de jugador (slice 1), `class-validator`/`class-transformer` están instalados y el `ValidationPipe` global está cableado (`whitelist`, `forbidNonWhitelisted`, `transform`, con `exceptionFactory` propio) como provider `APP_PIPE` en `AppModule` — ver `apps/api/AGENTS.md`.
 
 ## Errores
 
 - Códigos HTTP correctos y específicos: `400` validación, `401` sin autenticar, `403` autenticado pero sin permiso, `404` no existe, `409` conflicto (duplicados, estado inválido).
 - Se usan las excepciones de Nest (`NotFoundException`, `ConflictException`, …), no respuestas armadas a mano.
-- **Mismo shape de error en toda la API**, y sin filtrar detalles internos al cliente (stack traces, mensajes de la base). El shape todavía no está establecido: la primera feature que llegue acá lo define y lo documenta en `docs/decisions.md`.
+- **Mismo shape de error en toda la API**, y sin filtrar detalles internos al cliente (stack traces, mensajes de la base). Establecido por el registro de jugador (slice 1): `{ statusCode, code, message, details }`, siempre las cuatro claves (`details: null` cuando no aplica), vía `AppExceptionFilter` (`apps/api/src/common/filters/http-exception.filter.ts`). Detalle completo en `docs/decisions.md`, "Shape de error uniforme de la API".
+- `code` es un identificador estable en **inglés** snake_case (`dni_has_account`, `email_registered`, `validation`) — es lo que el frontend mapea a copy en español. `message` también va en inglés: es texto para debug/logging, no contrato de UI.
 
 ## Listas
 

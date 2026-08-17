@@ -15,6 +15,12 @@ dupla es un SaaS donde clubes de pádel organizan torneos: brackets autogenerado
 
 **Invariante de tenancy** — toda entidad propiedad de un club (torneos, canchas, inscripciones) lleva un `club_id` indexado. Los guards y queries en endpoints de club siempre filtran por el `club_id` del usuario autenticado, **nunca** por un `club_id` tomado del body/params/query del request. `Player` es la excepción: es una entidad global a la plataforma sin `club_id`. La vista pública es de solo lectura y no requiere autenticación.
 
+## Idioma
+
+**El código va en inglés; los comentarios y la documentación, en español.** Inglés: nombres de archivo, clases, funciones, variables, DTOs, rutas de la API, códigos de error, mensajes de error, y las descripciones de tests (`describe`/`it`). Español: comentarios de código, `docs/`, `AGENTS.md`/`CLAUDE.md`, mensajes de commit y descripciones de PR.
+
+Dos excepciones, ambas deliberadas y ya decididas en `docs/decisions.md`: las **URLs públicas de `apps/web`** (`/torneos`, `/jugadores`) y el **copy de la UI** van en español, porque son de cara al usuario y no identificadores de código. La API no entra ahí: sus rutas y sus `code` de error son contrato entre programas, y van en inglés. Detalle en `docs/api-conventions.md`.
+
 ## Estado actual
 
 Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no implementadas todavía. `apps/web` sigue siendo su scaffold de fábrica, sin hablar con la API. `apps/api` tiene Prisma inicializado (una sola entidad, `User`) pero sin auth, sin módulos de feature más allá de eso. No asumas que el resto de esa infraestructura ya existe: verificá antes de importarla, y creala como parte de la feature que la necesite por primera vez. Los detalles están en el archivo de cada paquete.

@@ -6,16 +6,16 @@ El contexto que aplica a todo el repo (producto, invariante de tenancy, workflow
 
 ## Estado del código
 
-`AppController`/`AppService` siguen siendo el scaffold de NestJS devolviendo `"Hello World!"`. Lo que ya no es scaffold: `AppModule` importa `ConfigModule` (global, carga el `.env` de la raíz del monorepo) y `PrismaModule`; hay una sola entidad, `User` (tabla `users`), migrada; y `main.ts` monta Swagger antes de `listen()` (ver abajo). El resto de `docs/decisions.md` sigue sin implementar.
+El scaffold `app.controller.ts`/`app.service.ts` (y sus specs) ya no existe — se borró cuando entró el primer módulo real, siguiendo la regla de abajo. `AppModule` importa `ConfigModule` (global, carga el `.env` de la raíz del monorepo), `PrismaModule` y `PlayersModule`, y registra `ValidationPipe` y el filtro de excepciones globales como providers (`APP_PIPE`/`APP_FILTER`, no en `main.ts` — ver por qué en la próxima sección). `main.ts` monta Swagger antes de `listen()` (ver abajo). Hay dos entidades migradas, `User` (`users`) y `Player` (`players`); el resto de `docs/decisions.md` sigue sin implementar.
 
 En concreto, esto todavía no existe — verificá antes de importarlo, y creálo como parte de la feature que lo necesite por primera vez:
 
-- **Auth** — no hay Passport, no hay JWT, no hay guards, no hay `@nestjs/passport`/`@nestjs/jwt`.
-- **Validación** — `class-validator`/`class-transformer` no están instalados y `main.ts` **no registra ningún `ValidationPipe` global**. Los decoradores de DTO solos no van a hacer nada silenciosamente hasta que se agreguen ambos; la primera feature con un request body tiene que cablear el pipe.
-- **Forma de los errores** — no hay exception filter. La forma consistente de error a nivel API que asumen las specs todavía la tiene que establecer quien llegue primero a esa necesidad.
-- **Guard de tenancy** — el invariante de `club_id` (raíz `CLAUDE.md`) está documentado pero no cableado: no hay todavía ninguna entidad con `club_id` ni un concepto de "usuario autenticado" del que sacarlo. Se implementa junto con auth.
+- **Auth de sesión** — no hay Passport, no hay JWT, no hay guards, no hay `@nestjs/passport`/`@nestjs/jwt`. `POST /auth/register` (módulo `players/`) crea la cuenta pero no loguea: no emite token ni cookie. El login (`POST /auth/login`, `GET /auth/me`) es la próxima pieza a implementar.
+- **Guard de tenancy** — el invariante de `club_id` (raíz `CLAUDE.md`) está documentado pero no cableado: no hay todavía ninguna entidad con `club_id` ni un concepto de "usuario autenticado" del que sacarlo. `Player` es la entidad global sin `club_id`; `Club` (con guard incluido) llega en el slice de tenant, junto con la auth de sesión.
 
-Borrá los archivos de scaffold `app.*` a medida que los reemplacen módulos reales, en vez de construir alrededor de ellos; `app.controller.spec.ts` y `test/app.e2e-spec.ts` verifican la respuesta `"Hello World!"` y tienen que irse junto con ellos.
+Lo que dejó de faltar con el registro de jugador (slice 1, `docs/data-model.md`), por si algún prompt o doc viejo todavía asume que no está: `class-validator`/`class-transformer` instalados y el `ValidationPipe` global cableado (`whitelist`, `forbidNonWhitelisted`, `transform`, `exceptionFactory` propio); el shape de error uniforme (`AppExceptionFilter`, ver `docs/decisions.md` "Shape de error uniforme de la API"); y `bcryptjs` para hashear contraseñas.
+
+Los archivos de scaffold `app.*` se borran a medida que los reemplacen módulos reales, en vez de construir alrededor de ellos — así se hizo con `players/`. Si un módulo nuevo entra y todavía quedara algún `app.*`, es la señal de que ese borrado se salteó.
 
 ## Prisma
 
@@ -55,8 +55,8 @@ pnpm --filter api run start:debug       # lo mismo, con el inspector de Node con
 pnpm --filter api run build             # nest build → dist/ (borra outDir primero)
 
 pnpm --filter api run test               # tests unitarios
-pnpm --filter api run test -- src/app.controller.spec.ts   # un solo archivo
-pnpm --filter api run test -- -t "should return"           # por nombre de test
+pnpm --filter api run test -- src/players/players.service.spec.ts   # un solo archivo
+pnpm --filter api run test -- -t "links the existing profile"       # por nombre de test
 pnpm --filter api run test:e2e           # tests e2e (config de Jest separada)
 pnpm --filter api run test:cov           # coverage → apps/api/coverage/
 
@@ -70,7 +70,7 @@ pnpm --filter api exec eslint "{src,test}/**/*.ts" --max-warnings 0   # exactame
 
 El acoplamiento del e2e al `AppModule` real es lo que hay que tener en cuenta: todo lo que importe `AppModule` tiene que poder arrancar bajo e2e. Dos consecuencias concretas de que Prisma ya esté adentro:
 
-- Cada archivo `*.e2e-spec.ts` que levante `AppModule` tiene que cerrarlo en `afterAll` (`await app.close()`) para que `PrismaService.onModuleDestroy` corra el `$disconnect()`. Un `beforeEach`/`afterEach` sin `close()` deja pools de conexión abiertos y Jest cuelga con el warning de "open handles" — pasó una vez en `app.e2e-spec.ts`, ver el `git blame` de esa sección si vuelve a aparecer.
+- Cada archivo `*.e2e-spec.ts` que levante `AppModule` tiene que cerrarlo en `afterAll` (`await app.close()`) para que `PrismaService.onModuleDestroy` corra el `$disconnect()`. Un `beforeEach`/`afterEach` sin `close()` deja pools de conexión abiertos y Jest cuelga con el warning de "open handles" — ya pasó una vez en este repo, así que si vuelve a aparecer es la primera sospecha, no una casualidad.
 - `test:e2e` corre con `NODE_OPTIONS=--experimental-vm-modules` (vía `cross-env`, ver el script en `package.json`). Hace falta porque Prisma 7 no tiene motor de Rust: el query compiler es WASM y se carga con `import()` dinámico, que Jest no soporta sin ese flag experimental. Es una limitación de Jest, no algo a "arreglar" — no lo saques si ves el warning de `ExperimentalWarning: VM Modules` en la salida, es esperado.
 
 ## Lint: local vs CI
@@ -87,7 +87,7 @@ El resto de la config que vale la pena conocer:
 ## Detalles de TypeScript
 
 - **La strictness es más laxa que en `apps/web`**: `strictNullChecks` está activo, pero `noImplicitAny` y `strictBindCallApply` están **apagados**. No asumas que el compilador va a atrapar un `any` implícito.
-- **Sin path alias.** `baseUrl` es `./` sin `paths` — los imports son relativos (`./app.service`), a diferencia del `@/*` de web. `module`/`moduleResolution` son `nodenext`.
+- **Sin path alias.** `baseUrl` es `./` sin `paths` — los imports son relativos (`./players.service`), a diferencia del `@/*` de web. `module`/`moduleResolution` son `nodenext`.
 - **`emitDecoratorMetadata` está activo** y es necesario para la DI de Nest — la inyección por constructor se resuelve a través de eso.
 
 ## Convenciones para módulos nuevos
