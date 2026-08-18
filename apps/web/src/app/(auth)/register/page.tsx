@@ -29,7 +29,7 @@ export default function Register() {
           {/* La magia pasa acá: 
                     -mt-16: Empuja la tarjeta hacia arriba sobre el fondo negro.
                     relative z-10: Asegura que quede por encima de la sección oscura y no se esconda.*/}
-          <div className="relative z-10 -mt-16 bg-[var(--background)] border-gray-400 dark:border-gray-800 p-6 md:p-10 rounded-2xl shadow-xl">
+          <div className="relative z-10 -mt-16 bg-(--background) border-gray-400 dark:border-gray-800 p-6 md:p-10 rounded-2xl shadow-xl">
             <form className="space-y-8">
               {/* Bloque: Datos de Acceso */}
               <div className="space-y-4">
