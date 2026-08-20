@@ -378,4 +378,117 @@ describe('POST /auth/register (e2e)', () => {
     const body = response.body as ErrorBody;
     expect(body.code).toBe('validation');
   });
+
+  it('201: persists the profile fields normalized, and keeps the contact data out of the response', async () => {
+    const dni = testDni(13);
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: testEmail('profile-fields'),
+        password: 'password123',
+        dni,
+        firstName: 'Test',
+        lastName: 'Profile',
+        dominantHand: 'left',
+        country: 'ar',
+        province: '  Buenos Aires  ',
+        phone: '+54 9 2284 12-3456',
+        emergencyPhone: '+54 (2284) 65-4321',
+      });
+
+    expect(response.status).toBe(201);
+
+    const stored = await prisma.player.findUniqueOrThrow({ where: { dni } });
+    expect(stored.dominantHand).toBe('left');
+    expect(stored.country).toBe('AR');
+    expect(stored.province).toBe('Buenos Aires');
+    expect(stored.phone).toBe('+5492284123456');
+    expect(stored.emergencyPhone).toBe('+542284654321');
+
+    // Los datos de contacto no salen en la respuesta, por la misma razón
+    // que no sale `player.email` (ver RegisterPlayerResponseDto): el
+    // endpoint no es un lector de datos de contacto ajenos.
+    const raw = JSON.stringify(response.body);
+    expect(raw).not.toContain('2284');
+    expect(raw).not.toContain('Buenos Aires');
+  });
+
+  it('201: on a claim, keeps the profile data loaded by the club and fills only what was empty', async () => {
+    const dni = testDni(14);
+
+    const orphan = await prisma.player.create({
+      data: {
+        dni,
+        firstName: 'Club',
+        lastName: 'Preloaded',
+        userId: null,
+        country: 'UY',
+        phone: '+59899123456',
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: testEmail('claim-profile-fields'),
+        password: 'password123',
+        dni,
+        firstName: 'Club',
+        lastName: 'Preloaded',
+        country: 'AR',
+        province: 'Buenos Aires',
+        phone: '+5492284123456',
+        dominantHand: 'left',
+      });
+
+    expect(response.status).toBe(201);
+    const body = response.body as SuccessfulRegistration;
+    expect(body.outcome).toBe('claimed');
+
+    const updated = await prisma.player.findUniqueOrThrow({
+      where: { id: orphan.id },
+    });
+    // Lo que ya tenía el club no se pisa...
+    expect(updated.country).toBe('UY');
+    expect(updated.phone).toBe('+59899123456');
+    // ...y lo que estaba vacío se completa con lo que tipeó la persona.
+    expect(updated.province).toBe('Buenos Aires');
+    expect(updated.dominantHand).toBe('left');
+  });
+
+  it('400 validation: rejects a phone that is not in E.164 format', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: testEmail('invalid-phone'),
+        password: 'password123',
+        dni: testDni(15),
+        firstName: 'Test',
+        lastName: 'InvalidPhone',
+        // Sin `+` ni código de país: el número local no es E.164.
+        phone: '2284123456',
+      });
+
+    expect(response.status).toBe(400);
+    const body = response.body as ErrorBody;
+    expect(body.code).toBe('validation');
+  });
+
+  it('400 validation: rejects a country name instead of an ISO 3166-1 alpha-2 code', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: testEmail('invalid-country'),
+        password: 'password123',
+        dni: testDni(16),
+        firstName: 'Test',
+        lastName: 'InvalidCountry',
+        country: 'Argentina',
+      });
+
+    expect(response.status).toBe(400);
+    const body = response.body as ErrorBody;
+    expect(body.code).toBe('validation');
+  });
 });

@@ -32,17 +32,29 @@ enum UserStatus {
 }
 
 model Player {
-  id        String        @id @default(uuid(7)) @db.Uuid
-  userId    String?       @unique @map("user_id") @db.Uuid
-  dni       String        @unique
-  firstName String        @map("first_name")
-  lastName  String        @map("last_name")
-  email     String?
-  category  String?
-  gender    PlayerGender?
-  birthDate DateTime?     @map("birth_date") @db.Date
-  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id           String        @id @default(uuid(7)) @db.Uuid
+  userId       String?       @unique @map("user_id") @db.Uuid
+  dni          String        @unique
+  firstName    String        @map("first_name")
+  lastName     String        @map("last_name")
+  email        String?
+  category     String?
+  gender       PlayerGender?
+  birthDate    DateTime?     @map("birth_date") @db.Date
+  dominantHand PlayerHand?   @map("dominant_hand")
+
+  // Contacto y residencia del perfil, no de la cuenta: `users` es solo
+  // credencial de login, y un jugador precargado por un club (userId
+  // null) también tiene teléfono y provincia. Formato fijado en el DTO:
+  // `country` es ISO 3166-1 alpha-2 ("AR") y los teléfonos son E.164
+  // ("+5492284123456"), un solo campo — el código de país y el número se
+  // separan en la UI, no en la base.
+  country        String?
+  province       String?
+  phone          String?
+  emergencyPhone String?  @map("emergency_phone")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -54,4 +66,11 @@ enum PlayerGender {
   female
 
   @@map("player_gender")
+}
+
+enum PlayerHand {
+  right
+  left
+
+  @@map("player_hand")
 }

@@ -104,6 +104,74 @@ describe('PlayersService', () => {
         }) as unknown,
       });
     });
+
+    it('persists the optional profile fields, normalized', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.player.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: 'user-1',
+        email: 'juan@example.com',
+      });
+      prisma.player.create.mockResolvedValue({
+        id: 'player-1',
+        firstName: 'Juan',
+        lastName: 'Pérez',
+        category: null,
+        gender: null,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      });
+
+      await service.register(
+        createDto({
+          dominantHand: 'left',
+          country: 'ar',
+          province: '  Buenos Aires  ',
+          phone: '+54 9 2284 12-3456',
+          emergencyPhone: '+54 (2284) 65-4321',
+        }),
+      );
+
+      const call = lastArgument<{ data: Record<string, unknown> }>(
+        prisma.player.create,
+      );
+      expect(call.data).toMatchObject({
+        dominantHand: 'left',
+        country: 'AR',
+        province: 'Buenos Aires',
+        phone: '+5492284123456',
+        emergencyPhone: '+542284654321',
+      });
+    });
+
+    it('stores the optional profile fields as null when they are absent', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.player.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: 'user-1',
+        email: 'juan@example.com',
+      });
+      prisma.player.create.mockResolvedValue({
+        id: 'player-1',
+        firstName: 'Juan',
+        lastName: 'Pérez',
+        category: null,
+        gender: null,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      });
+
+      await service.register(createDto());
+
+      const call = lastArgument<{ data: Record<string, unknown> }>(
+        prisma.player.create,
+      );
+      expect(call.data).toMatchObject({
+        dominantHand: null,
+        country: null,
+        province: null,
+        phone: null,
+        emergencyPhone: null,
+      });
+    });
   });
 
   describe('when the dni already has an ownerless profile (claim)', () => {
@@ -198,6 +266,11 @@ describe('PlayersService', () => {
         category: null,
         gender: null,
         birthDate: null,
+        dominantHand: null,
+        country: null,
+        province: null,
+        phone: null,
+        emergencyPhone: null,
       });
       prisma.user.create.mockResolvedValue({
         id: 'user-1',
@@ -215,15 +288,85 @@ describe('PlayersService', () => {
       ]);
 
       await service.register(
-        createDto({ category: 'caballeros cuarta', gender: 'male' }),
+        createDto({
+          category: 'caballeros cuarta',
+          gender: 'male',
+          dominantHand: 'left',
+          country: 'AR',
+          province: 'Buenos Aires',
+          phone: '+5492284123456',
+          emergencyPhone: '+542284654321',
+        }),
       );
 
-      const call = lastArgument<{
-        data: { email?: string; category?: string; gender?: string };
-      }>(prisma.player.updateManyAndReturn);
-      expect(call.data.email).toBe('juan@example.com');
-      expect(call.data.category).toBe('caballeros cuarta');
-      expect(call.data.gender).toBe('male');
+      const call = lastArgument<{ data: Record<string, unknown> }>(
+        prisma.player.updateManyAndReturn,
+      );
+      expect(call.data).toMatchObject({
+        email: 'juan@example.com',
+        category: 'caballeros cuarta',
+        gender: 'male',
+        dominantHand: 'left',
+        country: 'AR',
+        province: 'Buenos Aires',
+        phone: '+5492284123456',
+        emergencyPhone: '+542284654321',
+      });
+    });
+
+    it('does not overwrite the profile data the club had already loaded', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.player.findUnique.mockResolvedValue({
+        id: 'orphan-player',
+        userId: null,
+        dni: '35123456',
+        firstName: 'Juan',
+        lastName: 'Pérez',
+        email: null,
+        category: null,
+        gender: null,
+        birthDate: null,
+        dominantHand: 'right',
+        country: 'UY',
+        province: 'Montevideo',
+        phone: '+59899123456',
+        emergencyPhone: '+59899654321',
+      });
+      prisma.user.create.mockResolvedValue({
+        id: 'user-1',
+        email: 'juan@example.com',
+      });
+      prisma.player.updateManyAndReturn.mockResolvedValue([
+        {
+          id: 'orphan-player',
+          firstName: 'Juan',
+          lastName: 'Pérez',
+          category: null,
+          gender: null,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ]);
+
+      await service.register(
+        createDto({
+          dominantHand: 'left',
+          country: 'AR',
+          province: 'Buenos Aires',
+          phone: '+5492284123456',
+          emergencyPhone: '+542284654321',
+        }),
+      );
+
+      const call = lastArgument<{ data: Record<string, unknown> }>(
+        prisma.player.updateManyAndReturn,
+      );
+      expect(call.data).toMatchObject({
+        dominantHand: 'right',
+        country: 'UY',
+        province: 'Montevideo',
+        phone: '+59899123456',
+        emergencyPhone: '+59899654321',
+      });
     });
 
     it('returns 409 dni_has_account when it loses the race against a concurrent claim', async () => {
