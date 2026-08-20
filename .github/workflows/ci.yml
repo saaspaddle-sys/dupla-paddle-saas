@@ -24,6 +24,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://dupla:dupla@localhost:5432/dupla
+      JWT_SECRET: ci-only-not-a-real-secret
     steps:
       # fetch-depth: 0 para poder comparar contra la base del PR en el paso de abajo
       - uses: actions/checkout@v4

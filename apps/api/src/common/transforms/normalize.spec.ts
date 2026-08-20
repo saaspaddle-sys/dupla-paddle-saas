@@ -1,10 +1,14 @@
 import {
+  normalizeCountry,
+  normalizeCountryInput,
   normalizeDni,
   normalizeDniInput,
   normalizeEmail,
   normalizeEmailInput,
   normalizeName,
   normalizeNameInput,
+  normalizePhone,
+  normalizePhoneInput,
   normalizeText,
   normalizeTextInput,
 } from './normalize';
@@ -57,6 +61,31 @@ describe('normalize', () => {
 
     it('the unknown->unknown wrapper passes non-string values through untouched', () => {
       expect(normalizeTextInput(undefined)).toBeUndefined();
+    });
+  });
+
+  describe('normalizePhone / normalizePhoneInput', () => {
+    it('strips spaces, dashes, dots and parentheses, keeping the leading plus', () => {
+      expect(normalizePhone('+54 9 2284 12-3456')).toBe('+5492284123456');
+      expect(normalizePhone('+54 (2284) 65.4321')).toBe('+542284654321');
+    });
+
+    it('leaves other characters alone: a phone with letters stays invalid instead of being silently normalized', () => {
+      expect(normalizePhone('+54 whatsapp')).toBe('+54whatsapp');
+    });
+
+    it('the unknown->unknown wrapper passes non-string values through untouched', () => {
+      expect(normalizePhoneInput(5492284123456)).toBe(5492284123456);
+    });
+  });
+
+  describe('normalizeCountry / normalizeCountryInput', () => {
+    it('trims and uppercases', () => {
+      expect(normalizeCountry('  ar ')).toBe('AR');
+    });
+
+    it('the unknown->unknown wrapper passes non-string values through untouched', () => {
+      expect(normalizeCountryInput(null)).toBeNull();
     });
   });
 });
