@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AuthModule } from './auth/auth.module';
 import { AppExceptionFilter } from './common/filters/http-exception.filter';
 import { validationExceptionFactory } from './common/pipes/validation-exception.factory';
 import { HealthModule } from './health/health.module';
@@ -15,9 +17,15 @@ import { PrismaModule } from './prisma/prisma.module';
       isGlobal: true,
       envFilePath: resolve(process.cwd(), '../../.env'),
     }),
+    // Global (lo marca así el propio ThrottlerModule), pero sin registrar
+    // `ThrottlerGuard` como `APP_GUARD`: `GET /health` es un readiness
+    // probe y no se throttlea. Se aplica por controller con `@UseGuards`
+    // — ver `auth/auth.controller.ts` y `players/register-player.controller.ts`.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
     PrismaModule,
     HealthModule,
     PlayersModule,
+    AuthModule,
   ],
   providers: [
     // Registrados acá como providers (APP_PIPE/APP_FILTER) y no con

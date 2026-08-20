@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import bcrypt from 'bcryptjs';
+import { hashPassword } from '../common/crypto/password';
 import {
   normalizeCountry,
   normalizeDni,
@@ -13,11 +13,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RegisterPlayerDto } from './dto/register-player.dto';
 import { RegisterPlayerResponseDto } from './dto/register-player-response.dto';
 import { toRegisterPlayerResponse } from './players.mapper';
-
-// bcryptjs es puro JS (sin build nativo), a costa de ser más lento que
-// bcrypt/argon2 nativos — elegido para no depender de builds nativos
-// distintos entre Windows local y Linux en CI.
-const BCRYPT_ROUNDS = 10;
 
 function emailAlreadyRegistered(): ConflictException {
   return new ConflictException({
@@ -59,7 +54,7 @@ export class PlayersService {
       : null;
 
     // No mantener la transacción abierta durante ~100ms de hashing.
-    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const passwordHash = await hashPassword(dto.password);
 
     try {
       return await this.prisma.$transaction(async (tx) => {

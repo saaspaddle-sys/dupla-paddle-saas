@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
@@ -54,9 +55,15 @@ describe('POST /auth/register (e2e)', () => {
   }
 
   beforeAll(async () => {
+    // Esta suite hace muchos más de 5 POST /auth/register seguidos desde la
+    // misma IP — el límite real de `@Throttle` se prueba en
+    // `auth-throttle.e2e-spec.ts`, con su propio módulo, no acá.
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideGuard(ThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
