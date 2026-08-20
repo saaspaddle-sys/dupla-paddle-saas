@@ -54,3 +54,12 @@ La API se autodocumenta con `@nestjs/swagger`: UI en `/docs`, documento en `/doc
 - **Respuestas declaradas con su DTO de respuesta** — el caso feliz (`@ApiOkResponse`, `@ApiCreatedResponse`) y los errores que el cliente maneja distinto (`404`, `409`, …). Nunca se declara una entidad interna como respuesta, por la misma razón que no se la devuelve.
 - **Los endpoints autenticados llevan `@ApiBearerAuth('jwt')`**, con el mismo nombre de security scheme que declara el setup (`JWT_SECURITY_SCHEME`). Si no coincide, Swagger UI no manda el header y el "Try it out" da `401` sin explicar por qué.
 - **Los campos de los DTOs no se decoran a mano.** El plugin de `@nestjs/swagger` (activo en `nest-cli.json`) infiere tipo, requerido/opcional y descripción —del JSDoc de la propiedad— para todo archivo `*.dto.ts`. `@ApiProperty` queda para lo que el tipo no dice: `example`, `format`, o fijar un enum.
+
+## Evolución del contrato
+
+La API mergea antes que el frontend que la consume, en su propio PR (`docs/workflow.md`). Eso deja una ventana en la que el endpoint está en `main` sin que nadie lo llame, y otra en la que lo llama un frontend escrito contra el contrato anterior. Por eso **un cambio de contrato tiene que ser retrocompatible por sí solo**: no se puede contar con que el consumidor se actualice al mismo tiempo.
+
+- **Se puede en el lugar**: agregar un endpoint, agregar un campo opcional a un DTO de entrada, agregar un campo a un DTO de respuesta, agregar un `code` de error nuevo, aflojar una validación.
+- **No se puede en el lugar**: renombrar o borrar una ruta, un campo o un `code`; cambiar el tipo o el significado de un campo que ya existe; volver requerido un campo de entrada que era opcional; endurecer una validación sobre un payload que hoy se acepta. Se hace en tres pasos: se agrega lo nuevo, el consumidor migra en su propio PR, y lo viejo se borra en un tercero.
+- Mientras no exista **ningún** consumidor, un cambio incompatible es libre y es el momento barato para hacerlo — es lo que justificó renombrar `POST /auth/registro` a `POST /auth/register` (`docs/decisions.md`, 2026-08-14). Ese momento se cierra con el primer PR de frontend que consume el endpoint.
+- **Lo que el frontend consume es `/docs`**, no la spec en prosa ni el código: un cambio de contrato que no está reflejado ahí no llegó al otro lado.

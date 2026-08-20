@@ -27,7 +27,7 @@ Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no impl
 
 ## Workflow del equipo
 
-Una branch por tarea (`feat/`, `fix/`, `chore/`), PR hacia `main` protegido con squash merge, los checks de CI `api`, `web` y `format` tienen que estar verdes. Nunca commitear directo a `main`. Los cambios de API + frontend de una misma feature van en un solo PR. Las decisiones técnicas nuevas se agregan a `docs/decisions.md` en el mismo PR. Guía completa: `docs/workflow.md`.
+Una branch por tarea (`feat/`, `fix/`, `chore/`), PR hacia `main` protegido con squash merge, los checks de CI `api`, `web` y `format` tienen que estar verdes. Nunca commitear directo a `main`. Los PRs no cruzan el límite de paquete —`apps/api` es del lane de backend y `apps/web` del equipo de frontend—, así que una feature con los dos lados sale en dos PRs coordinados: primero la API, después el frontend que la consume. Por eso todo cambio de contrato de la API tiene que ser retrocompatible por sí solo. Las decisiones técnicas nuevas se agregan a `docs/decisions.md` en el mismo PR. Guía completa: `docs/workflow.md`.
 
 `.claude/agents/` tiene los agentes especializados del equipo, calibrados para este stack: `api-designer` (contratos de endpoints, correrlo antes de implementar una feature), `db-architect` (schema y migraciones), `db-verifier` (consistencia de Prisma antes de commitear), `test-engineer`, `code-reviewer`, `debugger`.
 

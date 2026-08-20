@@ -14,7 +14,7 @@ Este archivo tiene las **reglas**. Los **comandos** en orden — el ciclo comple
 ## Pull Requests
 
 - **Un PR = una unidad de trabajo revisable.** Si no se puede revisar en ~15 minutos, probablemente son dos PRs.
-- **Cambios API + frontend de la misma feature van juntos** en el mismo PR — esa es la ventaja del monorepo: el endpoint y la pantalla que lo consume se revisan y mergean como una unidad, sin ventanas donde el contrato está roto.
+- **Un PR no cruza el límite de paquete.** `apps/web` es del equipo de frontend y `apps/api` del lane de backend: un PR toca uno o el otro, nunca los dos. Una feature con los dos lados son **dos PRs coordinados** — primero el de la API, después el del frontend que la consume. El costo se asume a ojos abiertos: existe una ventana en la que el endpoint ya está en `main` y todavía no lo llama nadie, que es justo lo que el PR único evitaba. Se paga con **retrocompatibilidad**: el contrato de la API cambia de forma aditiva, sin renombrar ni borrar rutas, campos ni `code` de error en el lugar, porque ya no hay un frontend actualizándose en el mismo commit (reglas concretas en `docs/api-conventions.md`). La coordinación entre los dos PRs pasa por `/docs`: la API mergea documentada y el frontend consume lo que ese documento describe.
 - La descripción dice **qué** cambia, **por qué**, y **cómo probarlo**. Si implementa una spec de `api-designer`, pegala o linkeala.
 - **Regla de oro antes de abrir el PR**: pasale el agente `code-reviewer` al diff y resolvé los hallazgos. El review humano es para lo que la máquina no ve (¿es la solución correcta?), no para cazar DTOs sin validar.
 - **Al menos una aprobación** de otro miembro antes de mergear. El autor mergea su propio PR una vez aprobado y con los checks `api`, `web` y `format` en verde.
@@ -45,7 +45,7 @@ Este archivo tiene las **reglas**. Los **comandos** en orden — el ciclo comple
 
 1. `api-designer` produce la spec (módulo, endpoints, DTOs, errores) → se comparte con el equipo antes de escribir código.
 2. Si toca schema: `db-architect` diseña tablas y migración.
-3. Se implementa (API y UI en la misma rama).
+3. Se implementa la API en su rama; la UI que la consume va en otra rama y otro PR, después.
 4. `test-engineer` cubre lo nuevo con tests.
 5. Si tocó schema: `db-verifier` y `pnpm run db:verify` en verde, antes del review.
 6. `code-reviewer` sobre el diff → se corrigen los hallazgos.
