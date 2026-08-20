@@ -60,8 +60,7 @@ function toPayload(formData: FormData) {
     birthDate: optional(formData, "birthDate"),
     category: optional(formData, "category"),
     dominantHand: optional(formData, "dominantHand") as
-      | DominantHand
-      | undefined,
+      DominantHand | undefined,
     country: optional(formData, "country"),
     province: optional(formData, "province"),
     // La API guarda un solo string E.164; el form lo parte en dos controles.
@@ -90,10 +89,7 @@ function optional(formData: FormData, key: string): string | undefined {
   return value;
 }
 
-function toErrorState(
-  error: unknown,
-  formData: FormData,
-): RegisterFormState {
+function toErrorState(error: unknown, formData: FormData): RegisterFormState {
   const values = valuesFromFormData(formData);
 
   if (error instanceof ApiError) {

@@ -1,8 +1,9 @@
 //Se creara pantalla para registro debido a la cantidad de campos necesarios para la inscripcion
 "use client";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Header from "@/app/(public)/component/header";
 import { registerAction, type RegisterFormState } from "./actions";
+import Toast from "@/shared/components/Toast";
 
 // ISO 3166-1 alpha-2 (para `country`) + código telefónico E.164 (para
 // `phoneCode`/`emergencyPhoneCode`). Países más cercanos a un torneo local.
@@ -28,10 +29,25 @@ const INITIAL_STATE: RegisterFormState = {
 export default function Register() {
   //Estado para almacenar el sexo seleccionado("male","female" o "")
   const [sexoSeleccionado, setSexoSeleccionado] = useState<string>("");
+  const [showPassword, setShowPassword] = useState(false);
   const [state, formAction, pending] = useActionState(
     registerAction,
     INITIAL_STATE,
   );
+
+  // Tras el toast de éxito, se abre el modal de login (Header redirige a
+  // player-dashboard cuando el login se completa).
+  const [openLogin, setOpenLogin] = useState(false);
+
+  useEffect(() => {
+    if (state.status === "success") {
+      const timer = setTimeout(() => {
+        setOpenLogin(true);
+      }, 2500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [state.status]);
 
   function fieldError(name: string) {
     const messages = state.fieldErrors[name];
@@ -43,7 +59,18 @@ export default function Register() {
 
   return (
     <div className="min-h-screen bg-(--background) font-sans flex flex-col">
-      <Header />
+      <Header openLogin={openLogin} />
+      {/*TOATS */}
+
+      {state.status === "success" && (
+        <Toast
+          message="¡Registro exitoso!"
+          subMessage={
+            state.message || "Te redirigiremos al inicio de sesión..."
+          }
+          type="success"
+        />
+      )}
 
       <main className="flex-1">
         {/* 1. SECCIÓN SUPERIOR OSCURA (Contenedor del título) */}
@@ -92,13 +119,43 @@ export default function Register() {
                     <label className="text-xs font-bold text-gray-500 uppercase">
                       Contraseña (8 a 72 caracteres)
                     </label>
-                    <input
-                      type="password"
-                      name="password"
-                      required
-                      placeholder="******"
-                      className="w-full px-4 py-2.5 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        name="password"
+                        required
+                        placeholder="******"
+                        className="w-full px-4 py-2.5 pr-11 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        aria-label={
+                          showPassword
+                            ? "Ocultar contraseña"
+                            : "Mostrar contraseña"
+                        }
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPassword ? (
+                          <svg
+                            className="w-5 h-5 fill-current"
+                            viewBox="0 0 20 20"
+                          >
+                            <path d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zM10 15a5 5 0 01-4.546-2.924l1.464-1.464A3 3 0 0012.39 12.39l1.464-1.464A5 5 0 0110 15z" />
+                            <path d="M2.28 6.22a12.02 12.02 0 00-1.822 3.53c1.274 4.057 5.064 7 9.542 7 1.062 0 2.077-.166 3.024-.472l-1.634-1.634A5 5 0 016.98 9.02L2.28 6.22z" />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="w-5 h-5 fill-current"
+                            viewBox="0 0 20 20"
+                          >
+                            <path d="M10 3C5.522 3 1.732 5.943.458 10c1.274 4.057 5.064 7 9.542 7s8.268-2.943 9.542-7C18.268 5.943 14.478 3 10 3zm0 12a5 5 0 110-10 5 5 0 010 10z" />
+                            <path d="M10 8a2 2 0 100 4 2 2 0 000-4z" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                     {fieldError("password")}
                   </div>
                 </div>
