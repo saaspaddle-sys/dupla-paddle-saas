@@ -7,9 +7,16 @@ import { useEffect, useState } from "react";
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
+  // Placeholder hasta integrar el login real (feat/login-user): hoy se
+  // dispara con solo enviar el form, sin llamar a la API.
+  onLoginSuccess?: () => void;
 }
 
-export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
+export default function LoginModal({
+  isOpen,
+  onClose,
+  onLoginSuccess,
+}: LoginModalProps) {
   const [showPassword, setShowPassword] = useState(false);
 
   //efecto para desactivar modal con tecla escape, y desactivar scroll en el body mientras esta el modal abierto
@@ -61,7 +68,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           Iniciar Sesión
         </h2>
 
-        <form className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onLoginSuccess?.();
+          }}
+        >
           <label className="text-text-dark-main">Usuario</label>
           <input
             type="email"
