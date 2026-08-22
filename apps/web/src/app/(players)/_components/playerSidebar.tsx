@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useTransition } from "react";
+import { logoutAction } from "@/app/(auth)/login/logout-action";
 
 export default function PlayerSidebar() {
   const pathname = usePathname();
+  const router = useRouter(); //permite navegar despues del logout
+  const [isLoggingOut, startLogout] = useTransition(); // permite ejecutar la operacion asuncrona sin bloquear la interface.Tambien proporciona isLoggingOut, que indica si el proceso esta en curso
 
   // Rutas de navegación del panel de jugador
   const menuItems = [
@@ -140,8 +144,14 @@ export default function PlayerSidebar() {
         </div>
 
         <button
+          type="button"
+          disabled={isLoggingOut}
           onClick={() => {
-            // Lógica para cerrar sesión
+            startLogout(async () => {
+              await logoutAction(); //elimina la cookie session en el servidor
+              router.replace("/"); //lleva al usuario al inicio
+              router.refresh(); //fuerza a next a volver a leer los datos y cookies actuales
+            });
           }}
           className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer"
         >
@@ -158,7 +168,7 @@ export default function PlayerSidebar() {
               d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
             />
           </svg>
-          Cerrar Sesión
+          {isLoggingOut ? "Cerrando Sesión…" : "Cerrar Sesión"}
         </button>
       </div>
     </aside>

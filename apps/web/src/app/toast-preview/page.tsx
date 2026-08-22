@@ -38,7 +38,7 @@ export default function ToastPreview() {
   }
 
   return (
-    <div className="min-h-scree bg-(--background)n flex flex-col items-center gap-6 pt-24 bg-(--background) bg-deep-onyx">
+    <div className="min-h-screen bg-(--background)n flex flex-col items-center gap-6 pt-24">
       {/* bg-deep-onyx  Para comparar como queda*/}
       <h1 className="text-xl font-bold">Preview de Toast</h1>
       <div className="flex gap-3">
