@@ -27,6 +27,8 @@ const ERROR_COPY: Record<string, string> = {
   email_registered: "Ya existe una cuenta con ese e-mail.",
   dni_has_account: "Ese DNI ya tiene una cuenta asociada.",
   validation: "Revisá los campos marcados.",
+  too_many_requests:
+    "Demasiados intentos. Esperá un minuto antes de volver a intentar.",
 };
 
 export async function registerAction(
@@ -42,6 +44,7 @@ export async function registerAction(
       outcome: response.outcome,
     };
   } catch (error) {
+    console.error("Registration failed", error);
     return toErrorState(error, formData);
   }
 }

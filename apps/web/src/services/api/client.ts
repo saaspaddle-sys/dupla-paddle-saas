@@ -29,6 +29,7 @@ export async function apiFetch<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: { "content-type": "application/json", ...init.headers },
+    signal: init.signal ?? AbortSignal.timeout(10_000),
   });
 
   if (!response.ok) {

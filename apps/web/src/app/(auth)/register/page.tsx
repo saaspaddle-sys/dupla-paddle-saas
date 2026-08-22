@@ -1,6 +1,12 @@
 //Se creara pantalla para registro debido a la cantidad de campos necesarios para la inscripcion
 "use client";
-import { useActionState, useEffect, useState } from "react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Header from "@/app/(public)/component/header";
 import { registerAction, type RegisterFormState } from "./actions";
 import Toast from "@/shared/components/Toast";
@@ -30,6 +36,12 @@ export default function Register() {
   //Estado para almacenar el sexo seleccionado("male","female" o "")
   const [sexoSeleccionado, setSexoSeleccionado] = useState<string>("");
   const [showPassword, setShowPassword] = useState(false);
+  const [dni, setDni] = useState("");
+  const [country, setCountry] = useState("AR");
+  const [phoneCode, setPhoneCode] = useState("+54");
+  const [emergencyPhoneCode, setEmergencyPhoneCode] = useState("+54");
+  const [dominantHand, setDominantHand] = useState("right");
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
   const [state, formAction, pending] = useActionState(
     registerAction,
     INITIAL_STATE,
@@ -49,12 +61,39 @@ export default function Register() {
     }
   }, [state.status]);
 
+  useEffect(() => {
+    if (state.status !== "error") {
+      return;
+    }
+
+    const firstInvalidField = Object.keys(state.fieldErrors).find((name) =>
+      document.getElementById(name),
+    );
+    const element = firstInvalidField
+      ? document.getElementById(firstInvalidField)
+      : formErrorRef.current;
+    element?.focus();
+
+    startTransition(() => {
+      setSexoSeleccionado(state.values?.gender ?? "");
+      setDni(state.values?.dni ?? "");
+      setCountry(state.values?.country ?? "AR");
+      setPhoneCode(state.values?.phoneCode ?? "+54");
+      setEmergencyPhoneCode(state.values?.emergencyPhoneCode ?? "+54");
+      setDominantHand(state.values?.dominantHand ?? "right");
+    });
+  }, [state]);
+
   function fieldError(name: string) {
     const messages = state.fieldErrors[name];
     if (!messages?.length) {
       return null;
     }
-    return <p className="text-xs text-red-600 mt-1">{messages.join(" ")}</p>;
+    return (
+      <p id={`${name}-error`} className="text-xs text-red-600 mt-1">
+        {messages.join(" ")}
+      </p>
+    );
   }
 
   return (
@@ -92,7 +131,13 @@ export default function Register() {
                     relative z-10: Asegura que quede por encima de la sección oscura y no se esconda.*/}
           <div className="relative z-10 -mt-16 bg-(--background) border-gray-400 dark:border-gray-800 p-6 md:p-10 rounded-2xl shadow-xl">
             <form action={formAction} className="space-y-6">
-              <p aria-live="polite" className="text-sm font-medium">
+              <p
+                ref={formErrorRef}
+                tabIndex={-1}
+                role={state.status === "error" ? "alert" : undefined}
+                aria-live="polite"
+                className={`text-sm font-medium ${state.status === "error" ? "text-red-600" : "text-gray-700"}`}
+              >
                 {state.message}
               </p>
               {/* Bloque: Datos de Acceso */}
@@ -102,29 +147,45 @@ export default function Register() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="email"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       E-mail
                     </label>
                     <input
+                      id="email"
                       type="email"
                       name="email"
                       required
+                      autoComplete="email"
                       defaultValue={state.values?.email}
                       placeholder="Ej: riquelme@gmail.com"
+                      aria-invalid={Boolean(state.fieldErrors.email?.length)}
+                      aria-describedby="email-error"
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                     />
                     {fieldError("email")}
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="password"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       Contraseña (8 a 72 caracteres)
                     </label>
                     <div className="relative">
                       <input
+                        id="password"
                         type={showPassword ? "text" : "password"}
                         name="password"
                         required
+                        minLength={8}
+                        maxLength={72}
+                        autoComplete="new-password"
                         placeholder="******"
+                        aria-invalid={Boolean(state.fieldErrors.password?.length)}
+                        aria-describedby="password-error"
                         className="w-full px-4 py-2.5 pr-11 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                       />
                       <button
@@ -168,50 +229,69 @@ export default function Register() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="firstName"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       Nombres
                     </label>
                     <input
+                      id="firstName"
                       type="text"
                       name="firstName"
                       required
+                      autoComplete="given-name"
                       defaultValue={state.values?.firstName}
                       placeholder="Ej: Juan Román"
+                      aria-invalid={Boolean(state.fieldErrors.firstName?.length)}
+                      aria-describedby="firstName-error"
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                     />
                     {fieldError("firstName")}
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="lastName"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       Apellido
                     </label>
                     <input
+                      id="lastName"
                       type="text"
                       name="lastName"
                       required
+                      autoComplete="family-name"
                       defaultValue={state.values?.lastName}
                       placeholder="Ej: Riquelme"
+                      aria-invalid={Boolean(state.fieldErrors.lastName?.length)}
+                      aria-describedby="lastName-error"
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                     />
                     {fieldError("lastName")}
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="dni"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       DNI
                     </label>
                     <input
+                      id="dni"
                       type="text"
                       name="dni"
                       required
+                      autoComplete="off"
                       inputMode="numeric"
                       maxLength={8}
-                      defaultValue={state.values?.dni}
+                      value={dni}
                       placeholder="Ej: 20123456"
-                      onInput={(e) => {
-                        e.currentTarget.value = e.currentTarget.value
-                          .replace(/\D/g, "")
-                          .slice(0, 8);
-                      }}
+                      aria-invalid={Boolean(state.fieldErrors.dni?.length)}
+                      aria-describedby="dni-error"
+                      onChange={(event) =>
+                        setDni(event.target.value.replace(/\D/g, "").slice(0, 8))
+                      }
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                     />
                     {fieldError("dni")}
@@ -221,14 +301,21 @@ export default function Register() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Bloque 1: Sexo */}
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                      <label
+                        htmlFor="gender"
+                        className="text-xs font-bold text-gray-500 uppercase tracking-wide"
+                      >
                         Sexo
                       </label>
                       <div className="relative">
                         <select
+                          id="gender"
                           name="gender"
+                          autoComplete="sex"
                           value={sexoSeleccionado}
                           onChange={(e) => setSexoSeleccionado(e.target.value)} //guardamos la eleccion
+                          aria-invalid={Boolean(state.fieldErrors.gender?.length)}
+                          aria-describedby="gender-error"
                           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                         >
                           <option value="" disabled hidden>
@@ -247,17 +334,25 @@ export default function Register() {
                           </svg>
                         </div>
                       </div>
+                      {fieldError("gender")}
                     </div>
                     {/* Flecha personalizada absoluta */}
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                      <label
+                        htmlFor="birthDate"
+                        className="text-xs font-bold text-gray-500 uppercase tracking-wide"
+                      >
                         Fecha de Nacimiento
                       </label>
                       <div>
                         <input
+                          id="birthDate"
                           type="date"
                           name="birthDate"
+                          autoComplete="bday"
                           defaultValue={state.values?.birthDate}
+                          aria-invalid={Boolean(state.fieldErrors.birthDate?.length)}
+                          aria-describedby="birthDate-error"
                           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                         />
                         {fieldError("birthDate")}
@@ -275,13 +370,20 @@ export default function Register() {
                 {/* CASO 1: seleccion Masculino */}
                 {sexoSeleccionado === "male" && (
                   <div className="flex flex-col gap-1.5 animate-fadeIn">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                    <label
+                      htmlFor="category"
+                      className="text-xs font-bold text-gray-500 uppercase tracking-wide"
+                    >
                       Categoria Caballeros
                     </label>
                     <div className="relative">
                       <select
+                        id="category"
                         name="category"
-                        defaultValue=""
+                        autoComplete="off"
+                        defaultValue={state.values?.category ?? ""}
+                        aria-invalid={Boolean(state.fieldErrors.category?.length)}
+                        aria-describedby="category-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                       >
                         <option value="" disabled hidden>
@@ -324,19 +426,27 @@ export default function Register() {
                           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                         </svg>
                       </div>
+                    {fieldError("category")}
                     </div>
                   </div>
                 )}
                 {/* CASO 2: Eligió Femenino */}
                 {sexoSeleccionado === "female" && (
                   <div className="flex flex-col gap-1.5 animate-fadeIn">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                    <label
+                      htmlFor="category"
+                      className="text-xs font-bold text-gray-500 uppercase tracking-wide"
+                    >
                       Categoría Damas
                     </label>
                     <div className="relative">
                       <select
+                        id="category"
                         name="category"
-                        defaultValue=""
+                        autoComplete="off"
+                        defaultValue={state.values?.category ?? ""}
+                        aria-invalid={Boolean(state.fieldErrors.category?.length)}
+                        aria-describedby="category-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                       >
                         <option value="" disabled hidden>
@@ -360,6 +470,7 @@ export default function Register() {
                           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                         </svg>
                       </div>
+                    {fieldError("category")}
                     </div>
                   </div>
                 )}
@@ -379,13 +490,30 @@ export default function Register() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="country"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       País
                     </label>
                     <div className="relative">
                       <select
+                        id="country"
                         name="country"
-                        defaultValue={state.values?.country ?? "AR"}
+                        autoComplete="country"
+                        value={country}
+                        onChange={(event) => {
+                          const selectedCountry = COUNTRIES.find(
+                            (item) => item.iso === event.target.value,
+                          );
+                          setCountry(event.target.value);
+                          if (selectedCountry) {
+                            setPhoneCode(selectedCountry.dial);
+                            setEmergencyPhoneCode(selectedCountry.dial);
+                          }
+                        }}
+                        aria-invalid={Boolean(state.fieldErrors.country?.length)}
+                        aria-describedby="country-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                       >
                         {COUNTRIES.map((country) => (
@@ -402,31 +530,47 @@ export default function Register() {
                           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                         </svg>
                       </div>
+                    {fieldError("country")}
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="province"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       Provincia/Estado
                     </label>
                     <input
+                      id="province"
                       type="text"
                       name="province"
+                      autoComplete="address-level1"
                       defaultValue={state.values?.province}
                       placeholder="Ej: Buenos Aires"
+                      aria-invalid={Boolean(state.fieldErrors.province?.length)}
+                      aria-describedby="province-error"
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                     />
+                    {fieldError("province")}
                   </div>
                   {/* Campo Combinado: Celular con código de país */}
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="phone"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       Celular (Cod. Pais + numero)
                     </label>
                     <div className="flex gap-2">
                       {/* Select para el Código de País */}
                       <div className="relative w-32 shrink-0">
                         <select
+                          id="phoneCode"
                           name="phoneCode"
-                          defaultValue="+54"
+                          autoComplete="tel-country-code"
+                          value={phoneCode}
+                          onChange={(event) => setPhoneCode(event.target.value)}
+                          aria-label="Código de país del celular"
                           className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer text-center font-medium"
                         >
                           {COUNTRIES.map((country) => (
@@ -448,24 +592,37 @@ export default function Register() {
                       </div>
                       {/* Input para el Número de Teléfono */}
                       <input
+                        id="phone"
                         type="tel"
                         name="phone"
+                        autoComplete="tel"
                         defaultValue={state.values?.phone}
                         placeholder="xxxx-123456"
+                        aria-invalid={Boolean(state.fieldErrors.phone?.length)}
+                        aria-describedby="phone-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                       />
                     </div>
                     {fieldError("phone")}
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase">
+                    <label
+                      htmlFor="emergencyPhone"
+                      className="text-xs font-bold text-gray-500 uppercase"
+                    >
                       Telefono Emergencia
                     </label>
                     <div className="flex gap-2">
                       <div className="relative w-32 shrink-0">
                         <select
+                          id="emergencyPhoneCode"
                           name="emergencyPhoneCode"
-                          defaultValue="+54"
+                          autoComplete="tel-country-code"
+                          value={emergencyPhoneCode}
+                          onChange={(event) =>
+                            setEmergencyPhoneCode(event.target.value)
+                          }
+                          aria-label="Código de país del teléfono de emergencia"
                           className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer text-center font-medium"
                         >
                           {COUNTRIES.map((country) => (
@@ -484,10 +641,14 @@ export default function Register() {
                         </div>
                       </div>
                       <input
+                        id="emergencyPhone"
                         type="tel"
                         name="emergencyPhone"
+                        autoComplete="tel"
                         defaultValue={state.values?.emergencyPhone}
                         placeholder="Fijo o celular"
+                        aria-invalid={Boolean(state.fieldErrors.emergencyPhone?.length)}
+                        aria-describedby="emergencyPhone-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                       />
                     </div>
@@ -504,17 +665,31 @@ export default function Register() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Brazo Hábil (Segmented Control / Radio Group) */}
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                    <label
+                      id="dominantHand-label"
+                      className="text-xs font-bold text-gray-500 uppercase tracking-wide"
+                    >
                       Brazo habil
                     </label>
-                    <div className="flex bg-gray-50/75 p-1 rounded-xl border border-gray-200 dark:border-gray-700 h-10.5">
+                    <div
+                      role="radiogroup"
+                      aria-labelledby="dominantHand-label"
+                      aria-invalid={Boolean(
+                        state.fieldErrors.dominantHand?.length,
+                      )}
+                      aria-describedby="dominantHand-error"
+                      className="flex bg-gray-50/75 p-1 rounded-xl border border-gray-200 dark:border-gray-700 h-10.5"
+                    >
                       {/* Opción: Derecho */}
                       <label className="flex-1 inline-flex items-center justify-center text-sm font-medium text-gray-700 dark:text-gray-600 rounded-lg cursor-pointer transition-all has-checked:bg-white has-checked:text-gray-900 has-checked:shadow-sm dark:has-checked:bg-gray-700 dark:has-checked:text-white">
                         <input
+                          id="dominantHand-right"
                           type="radio"
                           name="dominantHand"
                           value="right"
-                          defaultChecked
+                          autoComplete="off"
+                          checked={dominantHand === "right"}
+                          onChange={() => setDominantHand("right")}
                           className="sr-only"
                         />
                         <span>Derecho</span>
@@ -523,25 +698,34 @@ export default function Register() {
                       {/* Opción: Izquierdo */}
                       <label className="flex-1 inline-flex items-center justify-center text-sm font-medium text-gray-700 dark:text-gray-600 rounded-lg cursor-pointer transition-all has-checked:bg-white has-checked:text-gray-900 has-checked:shadow-sm dark:has-checked:bg-gray-700 dark:has-checked:text-white">
                         <input
+                          id="dominantHand-left"
                           type="radio"
                           name="dominantHand"
                           value="left"
+                          autoComplete="off"
+                          checked={dominantHand === "left"}
+                          onChange={() => setDominantHand("left")}
                           className="sr-only"
                         />
                         <span>Izquierdo</span>
                       </label>
                     </div>
+                    {fieldError("dominantHand")}
                   </div>
 
                   {/* Bloque 2: Posicion habitual. La API todavía no tiene
                       este campo (ver RegisterIntegration.md): queda de UI,
                       sin enviarse en el payload hasta que se decida agregarlo. */}
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                    <label
+                      htmlFor="position"
+                      className="text-xs font-bold text-gray-500 uppercase tracking-wide"
+                    >
                       Posicion habitual
                     </label>
                     <div className="relative">
                       <select
+                        id="position"
                         defaultValue="derecho"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                       >
