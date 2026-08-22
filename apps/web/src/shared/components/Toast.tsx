@@ -75,11 +75,7 @@ export default function Toast({
       </div>
       <div className="min-w-0 flex-1">
         <p className={`font-bold text-sm ${messageColors[type]}`}>{message}</p>
-        {subMessage && (
-          <p className="text-xs text-gray-500">
-            {subMessage}
-          </p>
-        )}
+        {subMessage && <p className="text-xs text-gray-500">{subMessage}</p>}
       </div>
       <button
         type="button"
