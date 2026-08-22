@@ -184,7 +184,9 @@ export default function Register() {
                         maxLength={72}
                         autoComplete="new-password"
                         placeholder="******"
-                        aria-invalid={Boolean(state.fieldErrors.password?.length)}
+                        aria-invalid={Boolean(
+                          state.fieldErrors.password?.length,
+                        )}
                         aria-describedby="password-error"
                         className="w-full px-4 py-2.5 pr-11 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                       />
@@ -243,7 +245,9 @@ export default function Register() {
                       autoComplete="given-name"
                       defaultValue={state.values?.firstName}
                       placeholder="Ej: Juan Román"
-                      aria-invalid={Boolean(state.fieldErrors.firstName?.length)}
+                      aria-invalid={Boolean(
+                        state.fieldErrors.firstName?.length,
+                      )}
                       aria-describedby="firstName-error"
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                     />
@@ -290,7 +294,9 @@ export default function Register() {
                       aria-invalid={Boolean(state.fieldErrors.dni?.length)}
                       aria-describedby="dni-error"
                       onChange={(event) =>
-                        setDni(event.target.value.replace(/\D/g, "").slice(0, 8))
+                        setDni(
+                          event.target.value.replace(/\D/g, "").slice(0, 8),
+                        )
                       }
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                     />
@@ -314,7 +320,9 @@ export default function Register() {
                           autoComplete="sex"
                           value={sexoSeleccionado}
                           onChange={(e) => setSexoSeleccionado(e.target.value)} //guardamos la eleccion
-                          aria-invalid={Boolean(state.fieldErrors.gender?.length)}
+                          aria-invalid={Boolean(
+                            state.fieldErrors.gender?.length,
+                          )}
                           aria-describedby="gender-error"
                           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                         >
@@ -351,7 +359,9 @@ export default function Register() {
                           name="birthDate"
                           autoComplete="bday"
                           defaultValue={state.values?.birthDate}
-                          aria-invalid={Boolean(state.fieldErrors.birthDate?.length)}
+                          aria-invalid={Boolean(
+                            state.fieldErrors.birthDate?.length,
+                          )}
                           aria-describedby="birthDate-error"
                           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                         />
@@ -382,7 +392,9 @@ export default function Register() {
                         name="category"
                         autoComplete="off"
                         defaultValue={state.values?.category ?? ""}
-                        aria-invalid={Boolean(state.fieldErrors.category?.length)}
+                        aria-invalid={Boolean(
+                          state.fieldErrors.category?.length,
+                        )}
                         aria-describedby="category-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                       >
@@ -426,7 +438,7 @@ export default function Register() {
                           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                         </svg>
                       </div>
-                    {fieldError("category")}
+                      {fieldError("category")}
                     </div>
                   </div>
                 )}
@@ -445,7 +457,9 @@ export default function Register() {
                         name="category"
                         autoComplete="off"
                         defaultValue={state.values?.category ?? ""}
-                        aria-invalid={Boolean(state.fieldErrors.category?.length)}
+                        aria-invalid={Boolean(
+                          state.fieldErrors.category?.length,
+                        )}
                         aria-describedby="category-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                       >
@@ -470,7 +484,7 @@ export default function Register() {
                           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                         </svg>
                       </div>
-                    {fieldError("category")}
+                      {fieldError("category")}
                     </div>
                   </div>
                 )}
@@ -512,7 +526,9 @@ export default function Register() {
                             setEmergencyPhoneCode(selectedCountry.dial);
                           }
                         }}
-                        aria-invalid={Boolean(state.fieldErrors.country?.length)}
+                        aria-invalid={Boolean(
+                          state.fieldErrors.country?.length,
+                        )}
                         aria-describedby="country-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green appearance-none text-gray-700 cursor-pointer"
                       >
@@ -530,7 +546,7 @@ export default function Register() {
                           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                         </svg>
                       </div>
-                    {fieldError("country")}
+                      {fieldError("country")}
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -647,7 +663,9 @@ export default function Register() {
                         autoComplete="tel"
                         defaultValue={state.values?.emergencyPhone}
                         placeholder="Fijo o celular"
-                        aria-invalid={Boolean(state.fieldErrors.emergencyPhone?.length)}
+                        aria-invalid={Boolean(
+                          state.fieldErrors.emergencyPhone?.length,
+                        )}
                         aria-describedby="emergencyPhone-error"
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 text-sm focus:outline-none focus:border-padel-green"
                       />
