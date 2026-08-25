@@ -38,40 +38,50 @@ export default function ToastPreview() {
   }
 
   return (
-    <div className="min-h-screen bg-(--background)n flex flex-col items-center gap-6 pt-24">
-      {/* bg-deep-onyx  Para comparar como queda*/}
-      <h1 className="text-xl font-bold">Preview de Toast</h1>
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={() => show("success")}
-          className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-semibold"
-        >
-          Success
-        </button>
-        <button
-          type="button"
-          onClick={() => show("error")}
-          className="px-4 py-2 rounded-xl bg-red-500 text-white font-semibold"
-        >
-          Error
-        </button>
-        <button
-          type="button"
-          onClick={() => show("info")}
-          className="px-4 py-2 rounded-xl bg-blue-500 text-white font-semibold"
-        >
-          Info
-        </button>
-      </div>
+    <main className="min-h-screen bg-(--background) px-6 py-24">
+      <section className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wider text-gray-500">
+            Componentes
+          </p>
+          <h1 className="mt-2 text-2xl font-bold">Preview de Toast</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            Probá cada estado y el botón de cierre o esperá el auto-dismiss.
+          </p>
+        </div>
 
-      {toast && (
-        <Toast
-          message={toast.message}
-          subMessage={toast.subMessage}
-          type={toast.type}
-        />
-      )}
-    </div>
+        <div className="flex flex-wrap justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => show("success")}
+            className="rounded-xl bg-emerald-500 px-4 py-2 font-semibold text-white hover:bg-emerald-600"
+          >
+            Success
+          </button>
+          <button
+            type="button"
+            onClick={() => show("error")}
+            className="rounded-xl bg-red-500 px-4 py-2 font-semibold text-white hover:bg-red-600"
+          >
+            Error
+          </button>
+          <button
+            type="button"
+            onClick={() => show("info")}
+            className="rounded-xl bg-blue-500 px-4 py-2 font-semibold text-white hover:bg-blue-600"
+          >
+            Info
+          </button>
+        </div>
+
+        {toast && (
+          <Toast
+            message={toast.message}
+            subMessage={toast.subMessage}
+            type={toast.type}
+          />
+        )}
+      </section>
+    </main>
   );
 }
