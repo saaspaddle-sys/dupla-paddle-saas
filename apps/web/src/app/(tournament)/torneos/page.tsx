@@ -34,6 +34,24 @@ export default function TournamentScreen() {
       categorias: "",
       activa: false,
     },
+    {
+      id: 4,
+      rango: "02 - 07 ABR",
+      etiqueta: "PROVINCIAL",
+      titulo: "Torneo Patitas",
+      lugar: "Punto de Oro, Juarez",
+      categorias: "Caballeros 5ta",
+      activa: true,
+    },
+    {
+      id: 5,
+      rango: "1 - 08 SEP",
+      etiqueta: "PROVINCIAL",
+      titulo: "Torneo Juarense",
+      lugar: "Club Atletico Juarense",
+      categorias: "Damas 1ra",
+      activa: true,
+    },
   ];
 
   //Control de estado de tarjetas
@@ -93,10 +111,7 @@ export default function TournamentScreen() {
               </span>
               <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">
                 Calendario Institucional{" "}
-                <p>
-                  Convendra hacer carrusel en la seccion de imagenes?? y otro
-                  hacia abajo por fechas?
-                </p>
+                <p>Convendra hacer carrusel en la seccion de imagenes??</p>
               </h2>
             </div>
             {/* Botones de Navegación del Slider */}
@@ -137,7 +152,7 @@ export default function TournamentScreen() {
           {/* Grilla Principal Asimétrica */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
             {/* COLUMNA IZQUIERDA: Lista de Fechas */}
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4 h-91 overflow-y-auto pr-2 custom-scrollbar">
               {fechasCalendario.map((fecha) => {
                 // Evaluamos dinámicamente si esta tarjeta es la que debe tener el borde verde
                 const estaActiva = idTarjetaActiva === fecha.id;
