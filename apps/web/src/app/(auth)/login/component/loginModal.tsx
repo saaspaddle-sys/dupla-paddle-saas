@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { loginAction } from "../actions";
+import { initialLoginState } from "../state";
 
 //login modal que abrira al presionar "Iniciar sesion" sobre la pantalla en la que el usuario se encuentre.
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Placeholder hasta integrar el login real (feat/login-user): hoy se
-  // dispara con solo enviar el form, sin llamar a la API.
+  // Se dispara cuando el login se completó con éxito (sesión ya creada).
   onLoginSuccess?: () => void;
 }
 
@@ -18,6 +19,17 @@ export default function LoginModal({
   onLoginSuccess,
 }: LoginModalProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [state, formAction, pending] = useActionState(
+    loginAction,
+    initialLoginState,
+  );
+
+  useEffect(() => {
+    if (state.status === "success") {
+      onClose();
+      onLoginSuccess?.();
+    }
+  }, [state.status, onClose, onLoginSuccess]);
 
   //efecto para desactivar modal con tecla escape, y desactivar scroll en el body mientras esta el modal abierto
 
@@ -68,23 +80,32 @@ export default function LoginModal({
           Iniciar Sesión
         </h2>
 
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onLoginSuccess?.();
-          }}
-        >
-          <label className="text-text-dark-main">Usuario</label>
+        <form className="space-y-4" action={formAction}>
+          {state.status === "error" && (
+            <p role="alert" className="text-sm font-medium text-red-600">
+              {state.message}
+            </p>
+          )}
+          <label htmlFor="login-email" className="text-text-dark-main">
+            Email
+          </label>
           <input
+            id="login-email"
             type="email"
+            name="email"
+            required
             placeholder="Email"
             className="w-full px-4 py-2.5 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50/70 text-sm focus:outline-none focus:border-padel-green"
           />
-          <label className="text-text-dark-main">Contraseña</label>
+          <label htmlFor="login-password" className="text-text-dark-main">
+            Contraseña
+          </label>
           <div className="relative">
             <input
+              id="login-password"
               type={showPassword ? "text" : "password"}
+              name="password"
+              required
               placeholder="Contraseña"
               className="w-full px-4 py-2.5 pr-11 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50/70           
                             text-sm focus:outline-none focus:border-padel-green"
@@ -132,9 +153,10 @@ export default function LoginModal({
           </div>
           <button
             type="submit"
-            className="w-full py-2.5 mt-3 bg-gray-50/80 hover:bg-padel-green text-main rounded-xl font-bold"
+            disabled={pending}
+            className="w-full py-2.5 mt-3 bg-gray-50/80 hover:bg-padel-green text-main rounded-xl font-bold disabled:opacity-60"
           >
-            Ingresar
+            {pending ? "Ingresando…" : "Ingresar"}
           </button>
         </form>
       </div>
