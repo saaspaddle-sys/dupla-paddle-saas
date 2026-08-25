@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
+import { ClubsModule } from './clubs/clubs.module';
 import { AppExceptionFilter } from './common/filters/http-exception.filter';
 import { validationExceptionFactory } from './common/pipes/validation-exception.factory';
 import { HealthModule } from './health/health.module';
@@ -26,6 +27,9 @@ import { PrismaModule } from './prisma/prisma.module';
     HealthModule,
     PlayersModule,
     AuthModule,
+    // La lista se lee como orden de dependencia (Prisma -> Health ->
+    // Players -> Auth -> Clubs); en Nest el orden no es funcional.
+    ClubsModule,
   ],
   providers: [
     // Registrados acá como providers (APP_PIPE/APP_FILTER) y no con

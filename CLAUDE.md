@@ -23,7 +23,7 @@ Dos excepciones, ambas deliberadas y ya decididas en `docs/decisions.md`: las **
 
 ## Estado actual
 
-Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no implementadas todavía. `apps/web` sigue siendo su scaffold de fábrica, sin hablar con la API. `apps/api` tiene Prisma inicializado (una sola entidad, `User`) pero sin auth, sin módulos de feature más allá de eso. No asumas que el resto de esa infraestructura ya existe: verificá antes de importarla, y creala como parte de la feature que la necesite por primera vez. Los detalles están en el archivo de cada paquete.
+Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no implementadas todavía. `apps/web` sigue siendo su scaffold de fábrica, sin hablar con la API. `apps/api` va por el slice 2 de `docs/data-model.md`: tiene `users`, `players`, `clubs` y `subscriptions` migradas, auth con Passport + JWT, y el guard de tenancy cableado. Todavía no existe ninguna tabla con `club_id` — la primera es `tournaments`, en el slice 3. No asumas que el resto de esa infraestructura ya existe: verificá antes de importarla, y creala como parte de la feature que la necesite por primera vez. Los detalles están en el archivo de cada paquete.
 
 ## Workflow del equipo
 
