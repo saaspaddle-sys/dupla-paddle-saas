@@ -1,15 +1,36 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import LoginModal from "@/app/(auth)/login/component/loginModal";
 
-export default function Header() {
+interface HeaderProps {
+  // Cuando pasa a true (p. ej. tras un registro exitoso), abre el modal de login.
+  openLogin?: boolean;
+}
+
+export default function Header({ openLogin = false }: HeaderProps) {
   const [isLoginOpen, setLoginOpen] = useState(false);
+  // Ajusta el estado en base al prop durante el render (sin efecto), como
+  // recomienda React para "reset/adjust state when a prop changes".
+  const [prevOpenLogin, setPrevOpenLogin] = useState(openLogin);
+  if (openLogin !== prevOpenLogin) {
+    setPrevOpenLogin(openLogin);
+    if (openLogin) {
+      setLoginOpen(true);
+    }
+  }
+  const router = useRouter();
+
+  function handleLoginSuccess() {
+    setLoginOpen(false);
+    router.push("/player-dashboard");
+  }
 
   return (
-    <div>
+    <div className="sticky top-0 left-0 w-full z-50">
       {/* 1. NAVBAR GENERAL */}
-      <header className="bg-deep-onyx border-b dark:border-gray-200 dark:border-gray-800 backdrop-blur sticky top-0 z-50 ">
+      <header className="bg-deep-onyx border-b dark:border-gray-200 dark:border-gray-800 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold tracking-tight text-padel-green">
@@ -78,7 +99,11 @@ export default function Header() {
         </div>
       </header>
 
-      <LoginModal isOpen={isLoginOpen} onClose={() => setLoginOpen(false)} />
+      <LoginModal
+        isOpen={isLoginOpen}
+        onClose={() => setLoginOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+      />
     </div>
   );
 }
