@@ -30,5 +30,13 @@ export function toCurrentUserResponse(
           gender: user.player.gender,
         }
       : null,
+    club: user.club
+      ? {
+          id: user.club.id,
+          name: user.club.name,
+          slug: user.club.slug,
+          status: user.club.status,
+        }
+      : null,
   };
 }

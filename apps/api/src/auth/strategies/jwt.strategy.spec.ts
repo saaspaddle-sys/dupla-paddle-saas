@@ -28,7 +28,7 @@ describe('JwtStrategy', () => {
     jest.clearAllMocks();
   });
 
-  it('resolves the authenticated user, including its player, from the DB', async () => {
+  it('resolves the authenticated user, including its player and club, from the DB', async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: 'user-1',
       email: 'juan@example.com',
@@ -40,6 +40,14 @@ describe('JwtStrategy', () => {
         category: null,
         gender: null,
       },
+      clubs: [
+        {
+          id: 'club-1',
+          name: 'Club Ñandú',
+          slug: 'club-nandu',
+          status: 'active',
+        },
+      ],
     });
 
     const result = await strategy.validate({ sub: 'user-1' });
@@ -54,6 +62,12 @@ describe('JwtStrategy', () => {
         category: null,
         gender: null,
       },
+      club: {
+        id: 'club-1',
+        name: 'Club Ñandú',
+        slug: 'club-nandu',
+        status: 'active',
+      },
     });
     expect(prisma.user.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'user-1' } }) as unknown,
@@ -66,11 +80,53 @@ describe('JwtStrategy', () => {
       email: 'juan@example.com',
       status: 'active',
       player: null,
+      clubs: [],
     });
 
     const result = await strategy.validate({ sub: 'user-1' });
 
     expect(result.player).toBeNull();
+  });
+
+  it('returns club: null when the account owns no club', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'juan@example.com',
+      status: 'active',
+      player: null,
+      clubs: [],
+    });
+
+    const result = await strategy.validate({ sub: 'user-1' });
+
+    expect(result.club).toBeNull();
+  });
+
+  // El `orderBy` no es decorativo: la relación es 1:N, así que sin orden
+  // explícito el tenant de un request dependería del orden de filas que
+  // devuelva Postgres. Este test es lo que impide que alguien lo saque
+  // "porque no hace nada".
+  it('asks for a single club, deterministically ordered by creation date', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'juan@example.com',
+      status: 'active',
+      player: null,
+      clubs: [],
+    });
+
+    await strategy.validate({ sub: 'user-1' });
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          clubs: expect.objectContaining({
+            take: 1,
+            orderBy: { createdAt: 'asc' },
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    );
   });
 
   it('rejects with 401 unauthenticated when the user no longer exists', async () => {

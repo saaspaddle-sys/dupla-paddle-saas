@@ -19,7 +19,9 @@ model User {
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  player Player?
+  player       Player?
+  clubs        Club[]
+  subscription Subscription?
 
   @@map("users")
 }
@@ -73,4 +75,82 @@ enum PlayerHand {
   left
 
   @@map("player_hand")
+}
+
+/// El tenant. Toda entidad propiedad de un club lleva `club_id` indexado y
+/// se filtra por el club del usuario autenticado (invariante de tenancy,
+/// `CLAUDE.md` raíz). `Club` es la raíz de ese árbol: no tiene `club_id`
+/// porque *es* el `club_id`.
+model Club {
+  id        String     @id @default(uuid(7)) @db.Uuid
+  ownerId   String     @map("owner_id") @db.Uuid
+  name      String
+  slug      String     @unique
+  status    ClubStatus @default(active)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // `Restrict` y no `Cascade`: borrar una cuenta no puede evaporar un club
+  // con torneos jugados. La baja de cuenta es una feature con implicancias
+  // sobre datos históricos que todavía nadie diseñó; hasta que exista, la
+  // base se niega.
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  // Sin `@unique`: el schema soporta varios clubes por dueño y el cupo se
+  // capea en la app. Hoy ese cupo es 1 y lo enforcea de rebote el índice
+  // único de `subscriptions.user_id` — ver el comentario de ese modelo.
+  @@index([ownerId])
+  @@map("clubs")
+}
+
+enum ClubStatus {
+  active
+  suspended
+
+  @@map("club_status")
+}
+
+/// Suscripción **del usuario dueño**, no del club: un dueño con varios
+/// clubes (post-MVP) va a tener una sola que los cubre a todos.
+model Subscription {
+  id     String @id @default(uuid(7)) @db.Uuid
+  // `@unique` permanente, no una muleta a remover: es la forma real del
+  // modelo de facturación (una suscripción por dueño) y además es lo que
+  // serializa dos `POST /clubs` concurrentes de la misma cuenta — bajo
+  // Read Committed el SELECT de cuota previo no alcanza, el índice sí.
+  userId String @unique @map("user_id") @db.Uuid
+
+  plan   SubscriptionPlan   @default(basic)
+  status SubscriptionStatus @default(pending)
+
+  // Cuota guardada por suscripción y no derivada del plan en tiempo de
+  // lectura: mientras el cobro sea manual hace falta poder dar excepciones
+  // a una cuenta puntual sin inventar un plan nuevo.
+  maxTournaments Int      @map("max_tournaments")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // `Cascade` acá y `Restrict` en `clubs.owner_id`: la suscripción no
+  // tiene valor histórico propio, pero igual no queda huérfana en la
+  // práctica — no se puede borrar un usuario que tenga club.
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+/// Los dos son pagos. Lo gratuito del producto es que el jugador no tiene
+/// suscripción en absoluto (`User.subscription` es opcional).
+enum SubscriptionPlan {
+  basic
+  pro
+
+  @@map("subscription_plan")
+}
+
+enum SubscriptionStatus {
+  pending
+  active
+  canceled
+
+  @@map("subscription_status")
 }

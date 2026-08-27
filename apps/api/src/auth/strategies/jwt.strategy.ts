@@ -58,6 +58,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             gender: true,
           },
         },
+        // Cero queries nuevas: es un select anidado sobre la query que ya
+        // existía. `orderBy` no es decorativo — la relación es 1:N, así que
+        // sin orden explícito el tenant de un request dependería del orden
+        // de filas que devuelva Postgres. Con `createdAt asc`, el club de
+        // una cuenta es siempre el mismo.
+        //
+        // Cuando llegue multi-club, esta es la línea exacta donde se decide
+        // cuál es el club activo. No los controllers.
+        clubs: {
+          take: 1,
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, name: true, slug: true, status: true },
+        },
       },
     });
 
@@ -65,6 +78,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw unauthenticated();
     }
 
-    return { id: user.id, email: user.email, player: user.player };
+    return {
+      id: user.id,
+      email: user.email,
+      player: user.player,
+      club: user.clubs[0] ?? null,
+    };
   }
 }

@@ -2,7 +2,7 @@
 
 _ERD de referencia para la fase 1. Las decisiones que lo sustentan están en [decisions.md](./decisions.md) (identidad, tenancy, billing), el alcance en [product-brief.md](./product-brief.md), y la guía operativa de Postgres/Prisma en [database.md](./database.md)._
 
-Este diagrama es la **fuente de documentación** del modelo. La implementación real la owna Prisma (`apps/api/prisma/schema.prisma`); hoy cubre `users` (ver "Prisma 7: setup real" en `decisions.md`) y `players` (slice 1), y el resto se migra **por slice de feature** con el `db-architect` a medida que cada feature lo necesita (ver [Orden de migración](#orden-de-migración)). Nombres de modelo y enums nativos pueden diferir de lo que se muestra acá; en particular, las columnas de tiempo (`created_at`, etc.) son `timestamptz` en el schema real, no `timestamp`.
+Este diagrama es la **fuente de documentación** del modelo. La implementación real la owna Prisma (`apps/api/prisma/schema.prisma`); hoy cubre `users` (ver "Prisma 7: setup real" en `decisions.md`), `players` (slice 1) y `clubs` + `subscriptions` (slice 2), y el resto se migra **por slice de feature** con el `db-architect` a medida que cada feature lo necesita (ver [Orden de migración](#orden-de-migración)). Nombres de modelo y enums nativos pueden diferir de lo que se muestra acá; en particular, las columnas de tiempo (`created_at`, etc.) son `timestamptz` en el schema real, no `timestamp`.
 
 ## Diagrama
 
@@ -104,7 +104,7 @@ Un slice es el grupo mínimo de tablas que hace funcionar una feature de punta a
 | ------------- | ----------------------------------------------------- | ---------- | -------------------------------------------------------- |
 | 0 · Identidad | `users` ✅                                            | —          | login                                                    |
 | 1 · Jugadores | `players` ✅                                          | 0          | alcance 1: registro/alta de jugador + dedup              |
-| 2 · Tenant    | `clubs`, `subscriptions`                              | 0          | guard de tenancy, cuenta de organizador                  |
+| 2 · Tenant    | `clubs` ✅, `subscriptions` ✅                        | 0          | guard de tenancy, cuenta de organizador                  |
 | 3 · Torneo    | `tournaments`, `teams`                                | 1, 2       | alcance 2: crear torneo e inscribir duplas               |
 | 4 · Llave     | `matches`, `match_sets`                               | 3          | alcance 3 y 4: generar llave, cargar resultados, avanzar |
 | Fase 2        | `courts` + `matches.court_id`, `matches.scheduled_at` | 4          | programación de partidos                                 |
