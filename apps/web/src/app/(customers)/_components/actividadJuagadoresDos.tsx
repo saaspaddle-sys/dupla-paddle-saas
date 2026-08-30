@@ -3,7 +3,7 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import datosIniciales from "../data/actividad-jugadores.json";
 
 // Tipo para los datos de una semana
@@ -30,19 +30,48 @@ const asistenciaVacia: Asistencia = {
   Dom: 0,
 };
 
-const obtenerHistorialInicial = (): HistorialAsistencia => {
-  if (typeof window === "undefined") {
-    return datosIniciales;
+const CLAVE_ALMACENAMIENTO = "actividadJugadores";
+
+// Store externo (localStorage) leído vía useSyncExternalStore: el snapshot
+// del servidor y el primer snapshot del cliente coinciden (datosIniciales),
+// evitando el error de hidratación al leer datos reales recién después.
+let historialCache: HistorialAsistencia = datosIniciales;
+let historialCargado = false;
+let listeners: Array<() => void> = [];
+
+const suscribirseAHistorial = (listener: () => void) => {
+  listeners.push(listener);
+  return () => {
+    listeners = listeners.filter((l) => l !== listener);
+  };
+};
+
+const leerHistorialCliente = (): HistorialAsistencia => {
+  if (!historialCargado) {
+    const datosGuardados = localStorage.getItem(CLAVE_ALMACENAMIENTO);
+
+    if (datosGuardados) {
+      historialCache = JSON.parse(datosGuardados) as HistorialAsistencia;
+    } else {
+      localStorage.setItem(
+        CLAVE_ALMACENAMIENTO,
+        JSON.stringify(datosIniciales),
+      );
+    }
+
+    historialCargado = true;
   }
 
-  const datosGuardados = localStorage.getItem("actividadJugadores");
+  return historialCache;
+};
 
-  if (datosGuardados) {
-    return JSON.parse(datosGuardados) as HistorialAsistencia;
-  }
+const leerHistorialServidor = (): HistorialAsistencia => datosIniciales;
 
-  localStorage.setItem("actividadJugadores", JSON.stringify(datosIniciales));
-  return datosIniciales;
+const guardarHistorialEnAlmacenamiento = (historial: HistorialAsistencia) => {
+  localStorage.setItem(CLAVE_ALMACENAMIENTO, JSON.stringify(historial));
+  historialCache = historial;
+  historialCargado = true;
+  listeners.forEach((listener) => listener());
 };
 
 const obtenerUltimaSemana = (historial: HistorialAsistencia): string => {
@@ -55,15 +84,26 @@ export default function ActividadJugadoresDos() {
   // ESTADOS
   // --------------------------------------------------
 
-  // Guarda todas las semanas
-  const [historial, setHistorial] = useState<HistorialAsistencia>(
-    obtenerHistorialInicial,
+  // Guarda todas las semanas (sincronizado con localStorage)
+  const historial = useSyncExternalStore(
+    suscribirseAHistorial,
+    leerHistorialCliente,
+    leerHistorialServidor,
   );
 
   // Semana que estamos visualizando
   const [semanaSeleccionada, setSemanaSeleccionada] = useState(() =>
-    obtenerUltimaSemana(obtenerHistorialInicial()),
+    obtenerUltimaSemana(datosIniciales),
   );
+
+  // Recuerda el último historial usado para elegir semana, para poder
+  // ajustar la selección durante el render cuando cambie (sin useEffect).
+  const [historialUsado, setHistorialUsado] = useState(historial);
+
+  if (historial !== historialUsado) {
+    setHistorialUsado(historial);
+    setSemanaSeleccionada(obtenerUltimaSemana(historial));
+  }
 
   // Controla si estamos editando
   const [editando, setEditando] = useState(false);
@@ -113,8 +153,8 @@ export default function ActividadJugadoresDos() {
       },
     };
 
-    setHistorial(nuevoHistorial);
-    localStorage.setItem("actividadJugadores", JSON.stringify(nuevoHistorial));
+    guardarHistorialEnAlmacenamiento(nuevoHistorial);
+    setHistorialUsado(nuevoHistorial);
     setEditando(false);
   };
 
