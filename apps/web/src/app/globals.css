@@ -6,6 +6,8 @@
   --color-padel-dark: #121824;
   --color-padel-clay: #d27d2d;
   --color-brand-red: #ec3237; /*solo logo gula*/
+  --color-admin-panel: #121417; /*solo para los paneles de adminsitracion clubes y superAdmin*/
+  --color-admin-panel-contraste: #1a1d24; /*para tarjetas creadas dentro del panel admin*/
 
   --color-padel-green-title: #556b2f;
 
