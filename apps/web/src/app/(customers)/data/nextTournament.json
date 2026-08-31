@@ -1,0 +1,23 @@
+[
+  {
+    "nombre": "Copa ACOP Sexta",
+    "badge": "Ins. Abiertas",
+    "badgeType": "green",
+    "fecha": "28 Oct",
+    "parejas": "24/32 Parejas"
+  },
+  {
+    "nombre": "Torneo Mixto Pro",
+    "badge": "Próx",
+    "badgeType": "gray",
+    "fecha": "05 Nov",
+    "parejas": "--/16 Parejas"
+  },
+  {
+    "nombre": "Master Final",
+    "badge": "Próx",
+    "badgeType": "gray",
+    "fecha": "15 Dic",
+    "parejas": "Clasificación"
+  }
+]
