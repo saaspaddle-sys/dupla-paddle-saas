@@ -128,7 +128,11 @@ model Subscription {
   // Read Committed el SELECT de cuota previo no alcanza, el índice sí.
   userId String @unique @map("user_id") @db.Uuid
 
-  plan   SubscriptionPlan   @default(basic)
+  // Los dos defaults son deliberadamente los de menor privilegio: una fila
+  // insertada sin plan cae en el gratuito y no en uno pago, y una insertada
+  // sin estado nace inactiva. `ClubsService.create` escribe los tres campos
+  // explícitamente, así que estos defaults son la red y no el camino normal.
+  plan   SubscriptionPlan   @default(free)
   status SubscriptionStatus @default(pending)
 
   // Cuota guardada por suscripción y no derivada del plan en tiempo de
@@ -146,9 +150,13 @@ model Subscription {
   @@map("subscriptions")
 }
 
-/// Los dos son pagos. Lo gratuito del producto es que el jugador no tiene
-/// suscripción en absoluto (`User.subscription` es opcional).
+/// `free` es el plan de entrada de todo club: una llave activa, suficiente
+/// para correr una categoría entera de punta a punta (llave autogenerada,
+/// resultados, vista pública) y descubrir el producto. `basic` y `pro` son
+/// pagos. Un jugador sigue sin tener suscripción en absoluto
+/// (`User.subscription` es opcional): `free` es del club, no del jugador.
 enum SubscriptionPlan {
+  free
   basic
   pro
 

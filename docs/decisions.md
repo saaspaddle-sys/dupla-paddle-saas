@@ -2,6 +2,26 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-03 — Plan `free` de entrada, con una llave. Revisa "los dos son pagos" del 2026-08-25
+
+**Contexto**: la entrada del 2026-08-25 ("Suscripción por usuario, planes `basic`/`pro`") decidió que **los dos planes son pagos** y que lo gratuito del producto es que el jugador no tenga suscripción en absoluto. Al revisar el slice 3 quedó a la vista que el código no hace eso.
+
+Lo que pasaba de verdad: toda suscripción nacía en `basic` con `max_tournaments = 3` y `status: pending`, y **el chequeo de cuota nunca miró el estado** — lee `maxTournaments` y nada más. Como el cobro es manual y nadie pasa nada a `active`, cualquiera que se registrara y creara un club se llevaba 3 llaves activas, gratis, para siempre.
+
+O sea: **ya había un free tier de tres torneos, sin diseñar**. Y `pending` era una mentira — se leía "esperando pago" y se comportaba como activa. El día que entrara Mercado Pago y se activara el gate por estado, todos los clubes existentes quedaban bloqueados de golpe: no una migración, una caída para toda la base, y justo sobre los que más habían usado el producto.
+
+**Decisión**: hacerlo explícito.
+
+- **Plan `free` nuevo, cupo de 1 llave activa.** Todo club nace ahí. `basic` (3) y `pro` (12) pasan a ser genuinamente pagos, y la afirmación "los dos son pagos" del 2026-08-25 queda revisada: son pagos **los dos de arriba**, y `free` es del club, no del jugador — un jugador sigue sin tener suscripción en absoluto.
+- **El cupo gratis es 1 y no 3, y el número está elegido.** La cuota cuenta llaves activas simultáneas, y por la misma entrada del 2026-08-25 un fin de semana real con 4ta, 5ta y 6ta son **tres** llaves. Con tres gratis no existe el momento en que pagar tenga sentido: se regala el producto entero. Con una, el club corre una categoría completa de punta a punta —llave autogenerada, resultados cargados, vista pública andando— y el techo aparece recién cuando quiere su torneo de verdad. Es un trial acotado por alcance y no por tiempo: se siente muestra justa, no castigo.
+- **La suscripción `free` nace `active`.** No hay pago que esperar. Eso le devuelve a `pending` su significado real: una suscripción **paga** esperando confirmación. `DEFAULT_SUBSCRIPTION_STATUS` (`apps/api/src/clubs/clubs.service.ts`) lo escribe explícito en el alta.
+- **La cuota sigue siendo el único gate; no se agrega un chequeo por `status`.** Un club que pida `basic` y todavía no haya pagado no debe quedar peor que uno gratis. El paso a un plan pago mueve los tres campos juntos —`plan`, `max_tournaments`, `status`— cuando el pago se confirma, nunca la cuota sola. Mientras ese flujo no exista, `pending` no se produce en ningún camino.
+- **Los defaults de columna quedan en el menor privilegio**: `plan @default(free)` (una fila sin plan cae en el gratuito, no en uno pago) y `status @default(pending)` (una fila sin estado nace inactiva). El service escribe los tres campos explícitamente, así que los defaults son la red y no el camino normal.
+
+**Consecuencias**: agregar un valor a `subscription_plan` es aditivo y retrocompatible, el mismo argumento que ya se usó para `TournamentFormat`. **No hay backfill**: no existen clubes en producción, y convertir a `free` una hipotética suscripción `basic` real sería degradarla. Las filas viejas de entornos de desarrollo se quedan en `basic`/`pending` y son inocuas.
+
+El momento es deliberado: esto es gratis de decidir hoy y caro cuando haya clubes reales. Queda pendiente para cuando entre Mercado Pago el flujo de upgrade (`free → basic`), que es también donde entra la verificación de que quien creó el club tiene relación con el club real — el hueco de squatting anotado el 2026-08-20 sigue abierto y un plan gratuito le sube el incentivo, lo que es otro argumento para que el cupo gratis sea 1.
+
 ## 2026-09-02 — Slice 3: ciclo de vida del torneo, la dupla como inscripción, y la FK compuesta que sostiene el tenancy
 
 **Contexto**: el slice 3 trae `tournaments` y `teams`, las dos primeras tablas con `club_id`. Es donde el guard de tenancy del 2026-08-25 empieza a filtrar algo real, así que las decisiones de forma acá fijan el precedente para `matches` y `courts`.

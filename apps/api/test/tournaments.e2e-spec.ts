@@ -120,6 +120,21 @@ describe('Tournaments and teams (e2e)', () => {
   }
 
   /**
+   * Sube la cuota del club por debajo de la API. Todo club nace en el plan
+   * `free`, que permite una sola llave activa, y hay tests que necesitan
+   * varios torneos vivos a la vez sin que la cuota sea lo que están
+   * probando. No existe endpoint de upgrade —el cambio de plan es manual
+   * mientras el cobro lo sea—, así que el fixture escribe la suscripción
+   * directo.
+   */
+  async function raiseQuota(clubId: string, maxTournaments: number) {
+    await prisma.subscription.updateMany({
+      where: { user: { clubs: { some: { id: clubId } } } },
+      data: { maxTournaments },
+    });
+  }
+
+  /**
    * Registra un jugador (`POST /auth/register`, sin club) y devuelve su id
    * de `Player` y el dni usado, para poder comprobar después que ningún
    * response de `teams` lo expone.
@@ -257,19 +272,19 @@ describe('Tournaments and teams (e2e)', () => {
     it('409 tournament_quota_reached with details, and cancelling one frees the quota', async () => {
       const club = await createClub('quota');
 
+      // El club nace en el plan `free`, que permite una sola llave activa:
+      // el segundo torneo ya toca el techo.
       const first = await createTournament(club.token, 'quota-1');
-      await createTournament(club.token, 'quota-2');
-      await createTournament(club.token, 'quota-3');
 
       const overQuota = await request(app.getHttpServer())
         .post('/tournaments')
         .set('Authorization', `Bearer ${club.token}`)
-        .send({ name: testTournamentName('quota-4') });
+        .send({ name: testTournamentName('quota-2') });
 
       expect(overQuota.status).toBe(409);
       const body = overQuota.body as ErrorBody;
       expect(body.code).toBe('tournament_quota_reached');
-      expect(body.details).toEqual({ max: 3, current: 3 });
+      expect(body.details).toEqual({ max: 1, current: 1 });
 
       // Cancelar el primero saca una llave activa del conteo: la cuota
       // cuenta simultáneas, no acumuladas.
@@ -282,7 +297,7 @@ describe('Tournaments and teams (e2e)', () => {
       const afterCancel = await request(app.getHttpServer())
         .post('/tournaments')
         .set('Authorization', `Bearer ${club.token}`)
-        .send({ name: testTournamentName('quota-5') });
+        .send({ name: testTournamentName('quota-3') });
 
       expect(afterCancel.status).toBe(201);
     });
@@ -291,6 +306,7 @@ describe('Tournaments and teams (e2e)', () => {
   describe('GET /tournaments (pagination)', () => {
     it('paginates by cursor without repeating or skipping items, and nextCursor is null on the last page', async () => {
       const club = await createClub('pagination');
+      await raiseQuota(club.clubId, 3);
       const first = await createTournament(club.token, 'page-1');
       const second = await createTournament(club.token, 'page-2');
       const third = await createTournament(club.token, 'page-3');
