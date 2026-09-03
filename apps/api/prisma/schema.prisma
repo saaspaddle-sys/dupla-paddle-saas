@@ -145,7 +145,8 @@ model Subscription {
   // `Cascade` acá y `Restrict` en `clubs.owner_id`: la suscripción no
   // tiene valor histórico propio, pero igual no queda huérfana en la
   // práctica — no se puede borrar un usuario que tenga club.
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentEvents PaymentEvent[]
 
   @@map("subscriptions")
 }
@@ -169,6 +170,73 @@ enum SubscriptionStatus {
   canceled
 
   @@map("subscription_status")
+}
+
+/// Un solo valor hoy, igual que `TournamentFormat`: el enum existe para que
+/// sumar una pasarela después sea aditivo y no un cambio de tipo sobre una
+/// columna publicada.
+enum PaymentProvider {
+  mercado_pago
+
+  @@map("payment_provider")
+}
+
+/// Bitácora de notificaciones de la pasarela. **Existe para que el webhook
+/// sea idempotente**, no para auditar: Mercado Pago reintenta cada 15
+/// minutos hasta recibir un 200/201 y después del tercer intento sigue
+/// espaciado, así que la misma notificación llega varias veces y aplicarla
+/// dos veces sería regalar cuota. `subscriptions` sola no puede contestar
+/// "¿este pago ya lo apliqué?" porque guarda el estado final, no los
+/// eventos que lo produjeron.
+///
+/// El flujo que esta tabla habilita, y el motivo de que `processed_at` sea
+/// nullable: se inserta la fila **antes** de aplicar nada. Si el INSERT
+/// choca contra el unique, la notificación ya se vio: se mira
+/// `processed_at` y solo se responde 200 si además ya se aplicó. Sin esa
+/// columna, un proceso que muere entre el INSERT y el efecto dejaría el
+/// pago cobrado y nunca aplicado, porque el reintento chocaría contra el
+/// unique y se saltearía en silencio.
+///
+/// Tabla de la fase 3 (`docs/product-brief.md`): migrada, todavía sin
+/// código que la use.
+model PaymentEvent {
+  id       String          @id @default(uuid(7)) @db.Uuid
+  provider PaymentProvider @default(mercado_pago)
+
+  /// El `id` de la notificación. Es lo que corta los reintentos.
+  externalId String @map("external_id")
+
+  /// `type`, `action` y `data.id` del payload de Mercado Pago. `action` es
+  /// nullable porque no toda notificación lo trae.
+  type       String
+  action     String?
+  resourceId String  @map("resource_id")
+
+  /// El payload crudo, tal cual llegó. Guardarlo entero es lo que permite
+  /// reprocesar sin haber tenido que adivinar hoy las columnas de una
+  /// integración que todavía no se escribió.
+  payload Json @db.JsonB
+
+  receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(3)
+
+  /// A qué suscripción se aplicó. Nullable: la fila nace antes de que el
+  /// evento se resuelva, y una notificación puede no corresponder a
+  /// ninguna suscripción conocida.
+  subscriptionId String?       @map("subscription_id") @db.Uuid
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  /// La garantía de idempotencia, y por eso es un unique de la base y no un
+  /// `SELECT` previo: bajo concurrencia dos reintentos simultáneos leerían
+  /// ambos "no existe" y aplicarían los dos.
+  @@unique([provider, externalId])
+  /// El efecto se aplica sobre el recurso, no sobre la notificación: MP
+  /// manda varias notificaciones distintas sobre el mismo pago
+  /// (`payment.created`, `payment.updated`), así que el handler también
+  /// necesita poder buscar por recurso.
+  @@index([provider, type, resourceId])
+  @@index([subscriptionId])
+  @@map("payment_events")
 }
 
 /// El torneo, propiedad del club. Primera tabla del proyecto con `club_id`:

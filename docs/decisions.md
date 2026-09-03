@@ -2,6 +2,27 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-03 — Fase 3: degradación hacia adelante, cuota simultánea con cobro mensual, y `payment_events` para la idempotencia del webhook
+
+**Contexto**: con el plan `free` explícito (entrada de abajo), el upgrade a plan pago pasó de idea vaga a siguiente paso del modelo de negocio, y entró al alcance como fase 3 en `docs/product-brief.md`. Quedaban tres preguntas que había que cerrar **antes** de escribir el webhook, no después. Se cierran acá.
+
+**Decisión**:
+
+- **La degradación aplica solo hacia adelante.** Un club que deja de pagar vuelve a `free`, pero los torneos en curso siguen vivos hasta que terminen: bajar de plan **nunca** borra ni cierra un torneo. En la práctica el club queda temporalmente por encima de su cuota y la va liberando solo, lo que es correcto — la alternativa es romperle un torneo a jugadores que no tienen nada que ver con la factura. Implica que el chequeo de cuota se mantiene como está (mira el conteo al **crear**, no un estado global de cumplimiento), así que no hay código nuevo que escribir para sostener esto: es una consecuencia de dónde vive el gate, no una regla aparte.
+- **Cobro mensual, cuota que sigue contando llaves activas simultáneas.** Son dos ejes distintos y solo cambia el primero. Se descarta la cuota por período que la entrada del 2026-08-25 dejaba como opción aditiva una vez que existiera la fecha ancla de facturación: que ahora se **pueda** no quiere decir que convenga. Un torneo de pádel termina, así que una cuota mensual castigaría al club que organiza todos los fines de semana — el mejor cliente sería el primero en frenarse. La cuota simultánea no limita cuánto se usa el producto, limita cuánta complejidad concurrente sostiene, que es lo que realmente cuesta en datos y en soporte. Cero migración: ya funciona así.
+- **`payment_events` es la bitácora que hace idempotente al webhook.** Mercado Pago reintenta cada 15 minutos hasta recibir un `200`/`201`, y después del tercer intento espacia pero sigue (contrato publicado). Los duplicados están **garantizados**, no son un caso raro, y aplicar dos veces el mismo pago es regalar cuota.
+
+**Cómo funciona la idempotencia**, que es la parte que importa:
+
+- La garantía es un `UNIQUE (provider, external_id)` sobre el `id` de notificación, **índice de base y no un `SELECT` previo**: bajo concurrencia dos reintentos simultáneos leerían ambos "no existe" y aplicarían los dos. Es el mismo razonamiento que ya sostiene `subscriptions.user_id` (2026-08-25).
+- **`processed_at` es nullable y eso es el diseño, no un descuido.** La fila se inserta **antes** de aplicar el efecto. Si el proceso muere en el medio, queda evidencia de que el pago llegó y todavía no se aplicó; sin esa columna el reintento chocaría contra el `UNIQUE` y se saltearía en silencio, dejando un pago cobrado sin servicio entregado — que es el peor de los dos modos de falla.
+- Se guarda el **payload crudo** (`jsonb`). Es lo que permite reprocesar sin haber tenido que adivinar hoy las columnas de una integración que todavía no se escribió.
+- Hay un índice por `(provider, type, resource_id)` además del unique, porque MP manda **varias notificaciones distintas sobre el mismo pago** (`payment.created`, `payment.updated`): cortar reintentos es por notificación, pero aplicar el efecto es por recurso.
+
+**Consecuencias**: `payment_events` queda migrada **sin código que la use**, que es una excepción consciente a la regla de `data-model.md` de no adelantar tablas. Se acepta porque su forma no es una apuesta —sale del contrato publicado de MP— y porque la columna `payload` absorbe lo que no se sepa todavía. Las columnas que `subscriptions` necesite para atarse a la preaprobación **no** se adelantan: esas sí dependen de decisiones de integración y entran con el código que las escribe.
+
+`PaymentProvider` nace como enum de un solo valor por la misma razón que `TournamentFormat`: sumar una pasarela después es aditivo y no un cambio de tipo sobre una columna publicada.
+
 ## 2026-09-03 — Plan `free` de entrada, con una llave. Revisa "los dos son pagos" del 2026-08-25
 
 **Contexto**: la entrada del 2026-08-25 ("Suscripción por usuario, planes `basic`/`pro`") decidió que **los dos planes son pagos** y que lo gratuito del producto es que el jugador no tenga suscripción en absoluto. Al revisar el slice 3 quedó a la vista que el código no hace eso.
