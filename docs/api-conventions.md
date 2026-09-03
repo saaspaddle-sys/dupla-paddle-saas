@@ -48,6 +48,21 @@ Todo endpoint pertenece a una de estas, y la spec lo declara explícitamente. La
 
 Si un endpoint devuelve una colección que puede crecer sin techo (inscripciones de un torneo, jugadores), la spec declara la estrategia de paginación en vez de devolver todo. Si devuelve algo acotado por naturaleza (las canchas de un club), decilo explícitamente para que no quede como olvido.
 
+**Cuando se pagina, el shape es `{ items, nextCursor }`** — fijado por `GET /tournaments` (slice 3) y obligatorio de ahí en adelante:
+
+```jsonc
+{
+  "items": [/* ... */],
+  "nextCursor": "0195...", // el id del último item, o null en la última página
+}
+```
+
+- **Cursor, no offset.** Los ids son UUIDv7 (time-ordered), así que ordenar por `id desc` es ordenar por antigüedad y el cursor es un `WHERE id < ?` que usa el índice de la PK. Un offset sobre miles de filas escanea y descarta, y saltea o repite items cuando se inserta algo entre dos páginas.
+- **`limit` es 1–100 con default 20.** Fuera de rango es `400 validation`, no un clamp silencioso.
+- **Sin `total`.** Contar cuesta un `COUNT` completo por página; agregarlo después es aditivo.
+
+Elegí bien de entrada: envolver en `{ items, nextCursor }` una colección que ya se publicó como array pelado **no es retrocompatible**, así que ese cambio es un endpoint nuevo, no una edición en el lugar (ver "Evolución del contrato").
+
 ## Documentación (OpenAPI)
 
 La API se autodocumenta con `@nestjs/swagger`: UI en `/docs`, documento en `/docs/json`. El setup vive en `apps/api/src/swagger/swagger.setup.ts`. Documentar es parte del contrato, no un extra — un endpoint que no aparece en `/docs` no existe para el resto del equipo ni para el frontend.

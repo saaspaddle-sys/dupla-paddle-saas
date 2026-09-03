@@ -105,7 +105,7 @@ Un slice es el grupo mínimo de tablas que hace funcionar una feature de punta a
 | 0 · Identidad | `users` ✅                                            | —          | login                                                    |
 | 1 · Jugadores | `players` ✅                                          | 0          | alcance 1: registro/alta de jugador + dedup              |
 | 2 · Tenant    | `clubs` ✅, `subscriptions` ✅                        | 0          | guard de tenancy, cuenta de organizador                  |
-| 3 · Torneo    | `tournaments`, `teams`                                | 1, 2       | alcance 2: crear torneo e inscribir duplas               |
+| 3 · Torneo    | `tournaments` ✅, `teams` ✅                          | 1, 2       | alcance 2: crear torneo e inscribir duplas               |
 | 4 · Llave     | `matches`, `match_sets`                               | 3          | alcance 3 y 4: generar llave, cargar resultados, avanzar |
 | Fase 2        | `courts` + `matches.court_id`, `matches.scheduled_at` | 4          | programación de partidos                                 |
 
@@ -126,8 +126,8 @@ Notas sobre el orden:
 
 ### Torneo
 
-- **`tournaments`** — el torneo, propiedad del club (`club_id`).
-- **`teams`** — la dupla inscripta en un torneo (`player1_id` + `player2_id`). **Es la inscripción**; solo dobles en el MVP.
+- **`tournaments`** — el torneo, propiedad del club (`club_id`). Estados `open` / `in_progress` / `finished` / `canceled`; los dos primeros consumen cuota. Lleva un `UNIQUE (id, club_id)` que a primera vista es redundante —`id` ya es PK— pero es el blanco obligado de la FK compuesta de `teams`.
+- **`teams`** — la dupla inscripta en un torneo (`player1_id` + `player2_id`). **Es la inscripción**; solo dobles en el MVP. El par se guarda en **orden canónico**, garantizado por el `CHECK teams_canonical_order` (`player1_id < player2_id`): sin él, el `UNIQUE (tournament_id, player1_id, player2_id)` dejaría entrar (A,B) y (B,A) como dos duplas distintas. Ese `CHECK` es SQL crudo en la migración porque Prisma no lo modela.
 - **`matches`** — partido de la llave. `next_match_id` + `next_slot` modelan el avance automático del bracket. `court_id` / `scheduled_at` son de fase 2.
 - **`match_sets`** — resultado por set de un partido.
 
@@ -138,6 +138,6 @@ Notas sobre el orden:
 ## Notas de diseño
 
 - **IDs como `UUID` v7.** Claves primarias y foráneas son UUID, no enteros autoincrementales. Se usa **UUIDv7** (time-ordered) para que los inserts caigan casi secuenciales y no fragmenten el índice del PK como haría el v4 aleatorio. Los genera la app vía Prisma (`@default(uuid(7))`), no la base — el Postgres del compose es 17 y `uuidv7()` nativo recién existe en PG 18. Ver [decisions.md](./decisions.md).
-- **`club_id` denormalizado** en todas las tablas de club (`tournaments`, `teams`, `matches`, `courts`) e indexado. Cumple el invariante de tenancy y deja que cada guard filtre por `club_id` directo, sin joins. Es seguro porque el club de una fila nunca cambia.
+- **`club_id` denormalizado** en todas las tablas de club (`tournaments`, `teams`, `matches`, `courts`) e indexado. Cumple el invariante de tenancy y deja que cada guard filtre por `club_id` directo, sin joins. Es seguro porque el club de una fila nunca cambia. En las tablas que **no** cuelgan del club directamente, esa copia se valida con una **FK compuesta** contra la tabla de la que se copió, para que no pueda desincronizarse: `teams(tournament_id, club_id)` → `tournaments(id, club_id)`. `matches` y `match_sets` siguen el mismo patrón cuando entren en el slice 4. Ver la entrada del 2026-09-02 en [decisions.md](./decisions.md).
 - **Enums como `varchar`** en el DDL de referencia para que draw.io los importe; en Prisma serán enums nativos.
 - **Rol / multi-staff**: cuando exista staff con permisos (owner/admin/planillero), vive en un futuro `club_memberships (user_id, club_id, role)`, no en `users`. Fuera del MVP.

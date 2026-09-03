@@ -60,6 +60,11 @@ model Player {
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  // Dos back-relations y no una: una dupla referencia al jugador por dos
+  // columnas distintas, así que Prisma exige nombrarlas para desambiguar.
+  asPlayer1 Team[] @relation("TeamPlayer1")
+  asPlayer2 Team[] @relation("TeamPlayer2")
+
   @@map("players")
 }
 
@@ -95,6 +100,9 @@ model Club {
   // sobre datos históricos que todavía nadie diseñó; hasta que exista, la
   // base se niega.
   owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  tournaments Tournament[]
+  teams       Team[]
 
   // Sin `@unique`: el schema soporta varios clubes por dueño y el cupo se
   // capea en la app. Hoy ese cupo es 1 y lo enforcea de rebote el índice
@@ -153,4 +161,87 @@ enum SubscriptionStatus {
   canceled
 
   @@map("subscription_status")
+}
+
+/// El torneo, propiedad del club. Primera tabla del proyecto con `club_id`:
+/// acá el guard de tenancy del slice 2 empieza a filtrar algo.
+model Tournament {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  clubId    String           @map("club_id") @db.Uuid
+  name      String
+  format    TournamentFormat @default(single_elimination)
+  status    TournamentStatus @default(open)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // `Restrict` por la misma razón que `clubs.owner_id`: borrar un club no
+  // puede evaporar torneos jugados.
+  club  Club   @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  teams Team[]
+
+  // Compuesto y no `[clubId]` solo: la query de cuota filtra por club *y*
+  // status, y es la que corre en cada POST.
+  @@index([clubId, status])
+  // Blanco de la FK compuesta de `Team`. Como unicidad es redundante —`id`
+  // ya es PK—, pero Postgres exige un unique sobre las columnas
+  // referenciadas para aceptar esa FK.
+  @@unique([id, clubId])
+  @@map("tournaments")
+}
+
+enum TournamentStatus {
+  open
+  in_progress
+  finished
+  canceled
+
+  @@map("tournament_status")
+}
+
+/// Un solo valor hoy. El enum existe para que sumar formatos después sea
+/// aditivo y no un cambio de tipo sobre una columna publicada.
+enum TournamentFormat {
+  single_elimination
+
+  @@map("tournament_format")
+}
+
+/// La dupla inscripta. **Es** la inscripción: no hay tabla aparte. Solo
+/// dobles en el MVP, y eso está codificado en el schema — son dos columnas,
+/// no una tabla puente que aceptaría 1 o 3 jugadores.
+model Team {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  // Copia denormalizada de `tournaments.club_id`: es derivable con un join,
+  // y se guarda igual para que el guard filtre con la misma forma en toda
+  // tabla de club (invariante de tenancy). La FK compuesta de abajo es lo
+  // que impide que la copia mienta.
+  clubId       String   @map("club_id") @db.Uuid
+  tournamentId String   @map("tournament_id") @db.Uuid
+  player1Id    String   @map("player1_id") @db.Uuid
+  player2Id    String   @map("player2_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Restrict)
+
+  // Dos columnas y no una: la FK valida `tournament_id` *y* que el `club_id`
+  // de la fila sea el del torneo. `clubId` participa acá y en la relación de
+  // arriba a la vez, y Prisma lo acepta.
+  tournament Tournament @relation(fields: [tournamentId, clubId], references: [id, clubId], onDelete: Cascade)
+
+  // `Restrict`: un jugador con historial no desaparece por un DELETE.
+  player1 Player @relation("TeamPlayer1", fields: [player1Id], references: [id], onDelete: Restrict)
+  player2 Player @relation("TeamPlayer2", fields: [player2Id], references: [id], onDelete: Restrict)
+
+  // Con el orden canónico (ver el CHECK de la migración), esto sí impide que
+  // la misma dupla entre dos veces: sin él, (A,B) y (B,A) son dos filas.
+  @@unique([tournamentId, player1Id, player2Id])
+  // Sin `@@index([tournamentId])`: el unique de arriba ya lo cubre como
+  // prefijo izquierdo. Un segundo índice sobre la misma columna no acelera
+  // ninguna query y cuesta en cada escritura.
+  @@index([clubId])
+  @@index([player1Id])
+  @@index([player2Id])
+  @@map("teams")
 }

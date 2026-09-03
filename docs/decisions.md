@@ -2,6 +2,39 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-02 — Slice 3: ciclo de vida del torneo, la dupla como inscripción, y la FK compuesta que sostiene el tenancy
+
+**Contexto**: el slice 3 trae `tournaments` y `teams`, las dos primeras tablas con `club_id`. Es donde el guard de tenancy del 2026-08-25 empieza a filtrar algo real, así que las decisiones de forma acá fijan el precedente para `matches` y `courts`.
+
+**Decisión**:
+
+- **Ciclo de vida `open → in_progress → finished`, más `canceled`.** Cada estado hace algo distinto hoy, no en teoría: `open` acepta inscripciones, `in_progress` las rechaza (la llave ya está generada), `finished` y `canceled` son solo lectura. Se descartó `draft` porque en el MVP no se comporta distinto de `open` — y si no consumiera cuota, sería la forma de evadirla. Este slice implementa **solo** `→ canceled` vía `PATCH /tournaments/:tournamentId`; las otras dos las escribe el slice 4. Cualquier otra transición es `409 invalid_status_transition` con `details: { from, to }`. Pedir el estado que el torneo ya tiene también es `409`: la tabla de transiciones válidas no lo incluye, y un no-op silencioso escondería un bug del cliente.
+- **La cuota cuenta `open + in_progress`**, coherente con "llaves activas simultáneas" del 2026-08-25. Un torneo terminado o cancelado libera el cupo. La query corre **dentro** de la transacción `Serializable` junto con el `INSERT`, no antes: leer la cuota afuera la sacaría del snapshot y dos `POST` concurrentes podrían pasar los dos.
+- **La dupla se expone como `teams`, no como `registrations`.** Un solo nombre de punta a punta —tabla, ruta, y el `matches.team_a_id` del slice 4—, así el frontend aprende un vocabulario en vez de dos. `teams` **es** la inscripción: no hay tabla aparte. Solo dobles en el MVP, y eso está codificado como dos columnas y no como una tabla puente que aceptaría 1 o 3 jugadores.
+- **`format` nace como enum de un solo valor** (`single_elimination`). Agregar valores a un enum es aditivo y por lo tanto retrocompatible; la columna existe desde ahora porque ya está en el ERD.
+- **`teams.club_id` es una copia denormalizada, y la consistencia la garantiza una FK compuesta.** El vínculo real es `Team → Tournament → Club`: la columna es derivable con un join y se guarda igual para que toda tabla de club responda "¿de quién es esta fila?" con la misma forma, que es lo que hace que el guard no dependa de que cada quien recuerde el join. Pero toda copia admite desfasaje, así que lo cierra la base: `teams(tournament_id, club_id)` referencia `tournaments(id, club_id)`, con un `@@unique([id, clubId])` en `tournaments` como blanco. Una fila cuyo club no sea el de su torneo no entra, venga de la API, de un backfill o de un `psql` a mano. Costo total: un índice único más y una FK.
+
+**Qué va modelado en Prisma y qué va como SQL crudo** — la regla, verificada contra la base y no deducida:
+
+- Una **FK está dentro** de lo que Prisma Migrate administra. Agregada a mano al archivo de migración aparecería como drift en `prisma migrate diff --from-config-datasource --to-schema` (el paso "Check schema drift" de `ci.yml`) y frenaría el PR. Por eso la FK compuesta se modela en `schema.prisma` y sale sola del `migrate dev`.
+- Un **`CHECK` no está**: Prisma no lo modela, y el check de drift no lo ve. Comprobado agregando un `CHECK` a mano fuera del schema y corriendo el comando de CI, que devolvió `No difference detected` con exit `0`. Por eso `teams_canonical_order` (`player1_id < player2_id`) se agrega a mano al SQL generado con `migrate dev --create-only`. Ese constraint subsume la regla `player1_id != player2_id` —si son iguales, `<` es falso— y es lo que hace que el índice único `(tournament_id, player1_id, player2_id)` realmente impida que (A,B) y (B,A) entren como dos duplas.
+
+**Consecuencias**: `@@index([tournamentId])` en `teams` **no** existe a propósito — el unique de `(tournament_id, player1_id, player2_id)` ya lo cubre como prefijo izquierdo, y un segundo índice sobre la misma columna solo cuesta escrituras.
+
+Y una trampa que este diseño introduce y hay que conocer: **el orden canónico se calcula en Node comparando strings, pero el `CHECK` compara `uuid` nativo, y los dos órdenes solo coinciden en minúscula**. El orden de `uuid` en Postgres es el de sus 16 bytes; en JavaScript, `'F'` es 70 y `'a'` es 97, así que un id en mayúscula ordena al revés y el `INSERT` muere contra el constraint como `500`. `IsUUID` acepta las dos formas, así que la entrada se normaliza con `normalizeUuid` (`apps/api/src/common/transforms/normalize.ts`) antes de validar, y `canonicalPair` la reaplica para sostener el invariante desde cualquier entry point que no pase por el DTO. Hay tests de regresión unitarios y e2e; si alguien saca la normalización, se rompen.
+
+## 2026-09-02 — Paginación por cursor: `{ items, nextCursor }` es el shape de la API
+
+**Contexto**: `GET /tournaments` es el primer endpoint paginado del proyecto. `docs/api-conventions.md` exigía declarar una estrategia de paginación pero no fijaba ningún formato, así que este slice lo fija como precedente para todos los que vengan.
+
+**Decisión**: **cursor y no offset**, y la respuesta es `{ items, nextCursor }` con `nextCursor: null` en la última página.
+
+- Los ids son UUIDv7, o sea time-ordered: ordenar por `id desc` es ordenar por antigüedad, y el cursor es un `WHERE id < ?` que usa el índice de la PK. Un offset sobre miles de filas escanea y descarta, y además saltea o repite filas cuando se inserta algo entre dos páginas.
+- `limit` es 1–100, default 20. Se piden `limit + 1` filas para saber si hay página siguiente sin contar la tabla; la de más se descarta y solo define `nextCursor`.
+- La respuesta **no** trae `total`. Contar cuesta un `COUNT` completo en cada página y no lo necesita nadie todavía; agregarlo después es aditivo.
+
+**Consecuencias**: envolver una colección en `{ items, nextCursor }` es un cambio **incompatible** para un endpoint ya publicado (el cliente esperaba un array). Por eso la decisión inversa —`GET /tournaments/:tournamentId/teams` devuelve un array pelado, sin paginar— es deliberada y está anotada: un torneo se juega con decenas de duplas y el frontend necesita la lista completa para dibujar el bracket. El día que un formato admita inscripción masiva, nace un endpoint nuevo en vez de romper ese.
+
 ## 2026-08-25 — Tenancy en código: `ClubScopeGuard` + `@ClubId()`, y el club sale del usuario autenticado
 
 **Contexto**: el invariante de tenancy estaba documentado desde el 2026-07-16 pero nunca cableado — no había ninguna entidad con `club_id`. El slice 2 (`clubs`, `subscriptions`) es el que lo estrena, y es también el que fija cómo lo van a consumir los slices 3 y 4.
