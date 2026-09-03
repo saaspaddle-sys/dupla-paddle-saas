@@ -10,7 +10,10 @@ import {
   slugify,
 } from '../common/transforms/slug';
 import { Prisma } from '../generated/prisma/client';
-import { SubscriptionPlan } from '../generated/prisma/enums';
+import {
+  SubscriptionPlan,
+  SubscriptionStatus,
+} from '../generated/prisma/enums';
 import { SubscriptionModel } from '../generated/prisma/models';
 import { PrismaService } from '../prisma/prisma.service';
 import { toClubResponse } from './clubs.mapper';
@@ -26,12 +29,32 @@ import { UpdateClubDto } from './dto/update-club.dto';
  * una cuenta puntual sin inventar un plan nuevo.
  */
 export const PLAN_MAX_TOURNAMENTS: Record<SubscriptionPlan, number> = {
+  // Una sola llave, y el número está elegido: la cuota cuenta llaves activas
+  // simultáneas, y un fin de semana real con 4ta, 5ta y 6ta son tres. Con
+  // tres gratis no habría nunca un momento en que pagar tenga sentido; con
+  // una, el club corre una categoría entera de punta a punta y el techo
+  // aparece recién cuando quiere su torneo de verdad.
+  free: 1,
   basic: 3,
   pro: 12,
 };
 
-/** Toda suscripción nace acá; el cambio de plan es manual. */
-export const DEFAULT_PLAN: SubscriptionPlan = 'basic';
+/**
+ * Todo club nace gratis. El cambio a un plan pago es manual mientras el cobro
+ * lo sea, y mueve los tres campos juntos (`plan`, `maxTournaments`, `status`)
+ * cuando el pago se confirma — nunca la cuota sola.
+ */
+export const DEFAULT_PLAN: SubscriptionPlan = 'free';
+
+/**
+ * Estado con el que nace la suscripción del plan de entrada. `free` nace
+ * **activa** porque no hay nada que esperar: no hay pago que confirmar.
+ *
+ * Eso le devuelve a `pending` su significado real —una suscripción paga
+ * esperando el pago—, que hasta acá era una mentira: se leía "esperando
+ * pago" y se comportaba como activa, porque la cuota nunca miró el estado.
+ */
+export const DEFAULT_SUBSCRIPTION_STATUS: SubscriptionStatus = 'active';
 
 /**
  * Cuántos slugs derivados se prueban antes de rendirse: el original más
@@ -130,6 +153,10 @@ export class ClubsService {
             userId: ownerId,
             plan: DEFAULT_PLAN,
             maxTournaments: PLAN_MAX_TOURNAMENTS[DEFAULT_PLAN],
+            // Explícito y no por el default de la columna: el default es la
+            // red de menor privilegio (`pending`), y lo que corresponde acá
+            // es lo contrario — el plan gratuito no espera ningún pago.
+            status: DEFAULT_SUBSCRIPTION_STATUS,
           },
         });
 

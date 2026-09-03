@@ -4,6 +4,7 @@ import {
   buildSlugCandidates,
   ClubsService,
   DEFAULT_PLAN,
+  DEFAULT_SUBSCRIPTION_STATUS,
   PLAN_MAX_TOURNAMENTS,
 } from './clubs.service';
 import { CreateClubDto } from './dto/create-club.dto';
@@ -115,10 +116,25 @@ describe('ClubsService', () => {
       await service.create('user-1', createDto());
 
       const call = lastArgument<{
-        data: { plan: string; maxTournaments: number };
+        data: { plan: string; maxTournaments: number; status: string };
       }>(prisma.subscription.create);
       expect(call.data.plan).toBe(DEFAULT_PLAN);
       expect(call.data.maxTournaments).toBe(PLAN_MAX_TOURNAMENTS[DEFAULT_PLAN]);
+      expect(call.data.status).toBe(DEFAULT_SUBSCRIPTION_STATUS);
+    });
+
+    // Fijado como test propio y no como un `expect` más arriba: el plan de
+    // entrada es gratuito, así que nace **activo** — no hay pago que esperar.
+    // Si alguien lo devuelve a `pending`, todo club nuevo queda sin poder
+    // crear torneos el día que exista un gate por estado.
+    it('starts a free-plan subscription already active', async () => {
+      await service.create('user-1', createDto());
+
+      const call = lastArgument<{
+        data: { plan: string; status: string };
+      }>(prisma.subscription.create);
+      expect(call.data.plan).toBe('free');
+      expect(call.data.status).toBe('active');
     });
 
     it('derives the slug from the club name', async () => {

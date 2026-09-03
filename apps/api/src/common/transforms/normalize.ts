@@ -53,6 +53,20 @@ export function normalizeCountry(value: string): string {
   return value.trim().toUpperCase();
 }
 
+/**
+ * UUID en minúscula, que es la representación canónica que devuelve
+ * Postgres. No es cosmético: el orden de `uuid` en Postgres es el de sus 16
+ * bytes, y solo coincide con el orden de strings de JavaScript si los dos
+ * lados están en minúscula. Con un id en mayúscula la comparación se da
+ * vuelta ('F' es 70 y 'a' es 97), así que un par ordenado en Node podría
+ * llegar desordenado para el `CHECK` de la base — el caso concreto es
+ * `teams_canonical_order`. Igual que `normalizeCountry`, acá solo se corrige
+ * el casing; el formato lo valida el DTO.
+ */
+export function normalizeUuid(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 export function normalizeEmailInput(value: unknown): unknown {
   return typeof value === 'string' ? normalizeEmail(value) : value;
 }
@@ -75,4 +89,8 @@ export function normalizePhoneInput(value: unknown): unknown {
 
 export function normalizeCountryInput(value: unknown): unknown {
   return typeof value === 'string' ? normalizeCountry(value) : value;
+}
+
+export function normalizeUuidInput(value: unknown): unknown {
+  return typeof value === 'string' ? normalizeUuid(value) : value;
 }

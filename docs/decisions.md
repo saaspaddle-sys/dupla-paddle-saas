@@ -2,6 +2,80 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-03 — Fase 3: degradación hacia adelante, cuota simultánea con cobro mensual, y `payment_events` para la idempotencia del webhook
+
+**Contexto**: con el plan `free` explícito (entrada de abajo), el upgrade a plan pago pasó de idea vaga a siguiente paso del modelo de negocio, y entró al alcance como fase 3 en `docs/product-brief.md`. Quedaban tres preguntas que había que cerrar **antes** de escribir el webhook, no después. Se cierran acá.
+
+**Decisión**:
+
+- **La degradación aplica solo hacia adelante.** Un club que deja de pagar vuelve a `free`, pero los torneos en curso siguen vivos hasta que terminen: bajar de plan **nunca** borra ni cierra un torneo. En la práctica el club queda temporalmente por encima de su cuota y la va liberando solo, lo que es correcto — la alternativa es romperle un torneo a jugadores que no tienen nada que ver con la factura. Implica que el chequeo de cuota se mantiene como está (mira el conteo al **crear**, no un estado global de cumplimiento), así que no hay código nuevo que escribir para sostener esto: es una consecuencia de dónde vive el gate, no una regla aparte.
+- **Cobro mensual, cuota que sigue contando llaves activas simultáneas.** Son dos ejes distintos y solo cambia el primero. Se descarta la cuota por período que la entrada del 2026-08-25 dejaba como opción aditiva una vez que existiera la fecha ancla de facturación: que ahora se **pueda** no quiere decir que convenga. Un torneo de pádel termina, así que una cuota mensual castigaría al club que organiza todos los fines de semana — el mejor cliente sería el primero en frenarse. La cuota simultánea no limita cuánto se usa el producto, limita cuánta complejidad concurrente sostiene, que es lo que realmente cuesta en datos y en soporte. Cero migración: ya funciona así.
+- **`payment_events` es la bitácora que hace idempotente al webhook.** Mercado Pago reintenta cada 15 minutos hasta recibir un `200`/`201`, y después del tercer intento espacia pero sigue (contrato publicado). Los duplicados están **garantizados**, no son un caso raro, y aplicar dos veces el mismo pago es regalar cuota.
+
+**Cómo funciona la idempotencia**, que es la parte que importa:
+
+- La garantía es un `UNIQUE (provider, external_id)` sobre el `id` de notificación, **índice de base y no un `SELECT` previo**: bajo concurrencia dos reintentos simultáneos leerían ambos "no existe" y aplicarían los dos. Es el mismo razonamiento que ya sostiene `subscriptions.user_id` (2026-08-25).
+- **`processed_at` es nullable y eso es el diseño, no un descuido.** La fila se inserta **antes** de aplicar el efecto. Si el proceso muere en el medio, queda evidencia de que el pago llegó y todavía no se aplicó; sin esa columna el reintento chocaría contra el `UNIQUE` y se saltearía en silencio, dejando un pago cobrado sin servicio entregado — que es el peor de los dos modos de falla.
+- Se guarda el **payload crudo** (`jsonb`). Es lo que permite reprocesar sin haber tenido que adivinar hoy las columnas de una integración que todavía no se escribió.
+- Hay un índice por `(provider, type, resource_id)` además del unique, porque MP manda **varias notificaciones distintas sobre el mismo pago** (`payment.created`, `payment.updated`): cortar reintentos es por notificación, pero aplicar el efecto es por recurso.
+
+**Consecuencias**: `payment_events` queda migrada **sin código que la use**, que es una excepción consciente a la regla de `data-model.md` de no adelantar tablas. Se acepta porque su forma no es una apuesta —sale del contrato publicado de MP— y porque la columna `payload` absorbe lo que no se sepa todavía. Las columnas que `subscriptions` necesite para atarse a la preaprobación **no** se adelantan: esas sí dependen de decisiones de integración y entran con el código que las escribe.
+
+`PaymentProvider` nace como enum de un solo valor por la misma razón que `TournamentFormat`: sumar una pasarela después es aditivo y no un cambio de tipo sobre una columna publicada.
+
+## 2026-09-03 — Plan `free` de entrada, con una llave. Revisa "los dos son pagos" del 2026-08-25
+
+**Contexto**: la entrada del 2026-08-25 ("Suscripción por usuario, planes `basic`/`pro`") decidió que **los dos planes son pagos** y que lo gratuito del producto es que el jugador no tenga suscripción en absoluto. Al revisar el slice 3 quedó a la vista que el código no hace eso.
+
+Lo que pasaba de verdad: toda suscripción nacía en `basic` con `max_tournaments = 3` y `status: pending`, y **el chequeo de cuota nunca miró el estado** — lee `maxTournaments` y nada más. Como el cobro es manual y nadie pasa nada a `active`, cualquiera que se registrara y creara un club se llevaba 3 llaves activas, gratis, para siempre.
+
+O sea: **ya había un free tier de tres torneos, sin diseñar**. Y `pending` era una mentira — se leía "esperando pago" y se comportaba como activa. El día que entrara Mercado Pago y se activara el gate por estado, todos los clubes existentes quedaban bloqueados de golpe: no una migración, una caída para toda la base, y justo sobre los que más habían usado el producto.
+
+**Decisión**: hacerlo explícito.
+
+- **Plan `free` nuevo, cupo de 1 llave activa.** Todo club nace ahí. `basic` (3) y `pro` (12) pasan a ser genuinamente pagos, y la afirmación "los dos son pagos" del 2026-08-25 queda revisada: son pagos **los dos de arriba**, y `free` es del club, no del jugador — un jugador sigue sin tener suscripción en absoluto.
+- **El cupo gratis es 1 y no 3, y el número está elegido.** La cuota cuenta llaves activas simultáneas, y por la misma entrada del 2026-08-25 un fin de semana real con 4ta, 5ta y 6ta son **tres** llaves. Con tres gratis no existe el momento en que pagar tenga sentido: se regala el producto entero. Con una, el club corre una categoría completa de punta a punta —llave autogenerada, resultados cargados, vista pública andando— y el techo aparece recién cuando quiere su torneo de verdad. Es un trial acotado por alcance y no por tiempo: se siente muestra justa, no castigo.
+- **La suscripción `free` nace `active`.** No hay pago que esperar. Eso le devuelve a `pending` su significado real: una suscripción **paga** esperando confirmación. `DEFAULT_SUBSCRIPTION_STATUS` (`apps/api/src/clubs/clubs.service.ts`) lo escribe explícito en el alta.
+- **La cuota sigue siendo el único gate; no se agrega un chequeo por `status`.** Un club que pida `basic` y todavía no haya pagado no debe quedar peor que uno gratis. El paso a un plan pago mueve los tres campos juntos —`plan`, `max_tournaments`, `status`— cuando el pago se confirma, nunca la cuota sola. Mientras ese flujo no exista, `pending` no se produce en ningún camino.
+- **Los defaults de columna quedan en el menor privilegio**: `plan @default(free)` (una fila sin plan cae en el gratuito, no en uno pago) y `status @default(pending)` (una fila sin estado nace inactiva). El service escribe los tres campos explícitamente, así que los defaults son la red y no el camino normal.
+
+**Consecuencias**: agregar un valor a `subscription_plan` es aditivo y retrocompatible, el mismo argumento que ya se usó para `TournamentFormat`. **No hay backfill**: no existen clubes en producción, y convertir a `free` una hipotética suscripción `basic` real sería degradarla. Las filas viejas de entornos de desarrollo se quedan en `basic`/`pending` y son inocuas.
+
+El momento es deliberado: esto es gratis de decidir hoy y caro cuando haya clubes reales. Queda pendiente para cuando entre Mercado Pago el flujo de upgrade (`free → basic`), que es también donde entra la verificación de que quien creó el club tiene relación con el club real — el hueco de squatting anotado el 2026-08-20 sigue abierto y un plan gratuito le sube el incentivo, lo que es otro argumento para que el cupo gratis sea 1.
+
+## 2026-09-02 — Slice 3: ciclo de vida del torneo, la dupla como inscripción, y la FK compuesta que sostiene el tenancy
+
+**Contexto**: el slice 3 trae `tournaments` y `teams`, las dos primeras tablas con `club_id`. Es donde el guard de tenancy del 2026-08-25 empieza a filtrar algo real, así que las decisiones de forma acá fijan el precedente para `matches` y `courts`.
+
+**Decisión**:
+
+- **Ciclo de vida `open → in_progress → finished`, más `canceled`.** Cada estado hace algo distinto hoy, no en teoría: `open` acepta inscripciones, `in_progress` las rechaza (la llave ya está generada), `finished` y `canceled` son solo lectura. Se descartó `draft` porque en el MVP no se comporta distinto de `open` — y si no consumiera cuota, sería la forma de evadirla. Este slice implementa **solo** `→ canceled` vía `PATCH /tournaments/:tournamentId`; las otras dos las escribe el slice 4. Cualquier otra transición es `409 invalid_status_transition` con `details: { from, to }`. Pedir el estado que el torneo ya tiene también es `409`: la tabla de transiciones válidas no lo incluye, y un no-op silencioso escondería un bug del cliente.
+- **La cuota cuenta `open + in_progress`**, coherente con "llaves activas simultáneas" del 2026-08-25. Un torneo terminado o cancelado libera el cupo. La query corre **dentro** de la transacción `Serializable` junto con el `INSERT`, no antes: leer la cuota afuera la sacaría del snapshot y dos `POST` concurrentes podrían pasar los dos.
+- **La dupla se expone como `teams`, no como `registrations`.** Un solo nombre de punta a punta —tabla, ruta, y el `matches.team_a_id` del slice 4—, así el frontend aprende un vocabulario en vez de dos. `teams` **es** la inscripción: no hay tabla aparte. Solo dobles en el MVP, y eso está codificado como dos columnas y no como una tabla puente que aceptaría 1 o 3 jugadores.
+- **`format` nace como enum de un solo valor** (`single_elimination`). Agregar valores a un enum es aditivo y por lo tanto retrocompatible; la columna existe desde ahora porque ya está en el ERD.
+- **`teams.club_id` es una copia denormalizada, y la consistencia la garantiza una FK compuesta.** El vínculo real es `Team → Tournament → Club`: la columna es derivable con un join y se guarda igual para que toda tabla de club responda "¿de quién es esta fila?" con la misma forma, que es lo que hace que el guard no dependa de que cada quien recuerde el join. Pero toda copia admite desfasaje, así que lo cierra la base: `teams(tournament_id, club_id)` referencia `tournaments(id, club_id)`, con un `@@unique([id, clubId])` en `tournaments` como blanco. Una fila cuyo club no sea el de su torneo no entra, venga de la API, de un backfill o de un `psql` a mano. Costo total: un índice único más y una FK.
+
+**Qué va modelado en Prisma y qué va como SQL crudo** — la regla, verificada contra la base y no deducida:
+
+- Una **FK está dentro** de lo que Prisma Migrate administra. Agregada a mano al archivo de migración aparecería como drift en `prisma migrate diff --from-config-datasource --to-schema` (el paso "Check schema drift" de `ci.yml`) y frenaría el PR. Por eso la FK compuesta se modela en `schema.prisma` y sale sola del `migrate dev`.
+- Un **`CHECK` no está**: Prisma no lo modela, y el check de drift no lo ve. Comprobado agregando un `CHECK` a mano fuera del schema y corriendo el comando de CI, que devolvió `No difference detected` con exit `0`. Por eso `teams_canonical_order` (`player1_id < player2_id`) se agrega a mano al SQL generado con `migrate dev --create-only`. Ese constraint subsume la regla `player1_id != player2_id` —si son iguales, `<` es falso— y es lo que hace que el índice único `(tournament_id, player1_id, player2_id)` realmente impida que (A,B) y (B,A) entren como dos duplas.
+
+**Consecuencias**: `@@index([tournamentId])` en `teams` **no** existe a propósito — el unique de `(tournament_id, player1_id, player2_id)` ya lo cubre como prefijo izquierdo, y un segundo índice sobre la misma columna solo cuesta escrituras.
+
+Y una trampa que este diseño introduce y hay que conocer: **el orden canónico se calcula en Node comparando strings, pero el `CHECK` compara `uuid` nativo, y los dos órdenes solo coinciden en minúscula**. El orden de `uuid` en Postgres es el de sus 16 bytes; en JavaScript, `'F'` es 70 y `'a'` es 97, así que un id en mayúscula ordena al revés y el `INSERT` muere contra el constraint como `500`. `IsUUID` acepta las dos formas, así que la entrada se normaliza con `normalizeUuid` (`apps/api/src/common/transforms/normalize.ts`) antes de validar, y `canonicalPair` la reaplica para sostener el invariante desde cualquier entry point que no pase por el DTO. Hay tests de regresión unitarios y e2e; si alguien saca la normalización, se rompen.
+
+## 2026-09-02 — Paginación por cursor: `{ items, nextCursor }` es el shape de la API
+
+**Contexto**: `GET /tournaments` es el primer endpoint paginado del proyecto. `docs/api-conventions.md` exigía declarar una estrategia de paginación pero no fijaba ningún formato, así que este slice lo fija como precedente para todos los que vengan.
+
+**Decisión**: **cursor y no offset**, y la respuesta es `{ items, nextCursor }` con `nextCursor: null` en la última página.
+
+- Los ids son UUIDv7, o sea time-ordered: ordenar por `id desc` es ordenar por antigüedad, y el cursor es un `WHERE id < ?` que usa el índice de la PK. Un offset sobre miles de filas escanea y descarta, y además saltea o repite filas cuando se inserta algo entre dos páginas.
+- `limit` es 1–100, default 20. Se piden `limit + 1` filas para saber si hay página siguiente sin contar la tabla; la de más se descarta y solo define `nextCursor`.
+- La respuesta **no** trae `total`. Contar cuesta un `COUNT` completo en cada página y no lo necesita nadie todavía; agregarlo después es aditivo.
+
+**Consecuencias**: envolver una colección en `{ items, nextCursor }` es un cambio **incompatible** para un endpoint ya publicado (el cliente esperaba un array). Por eso la decisión inversa —`GET /tournaments/:tournamentId/teams` devuelve un array pelado, sin paginar— es deliberada y está anotada: un torneo se juega con decenas de duplas y el frontend necesita la lista completa para dibujar el bracket. El día que un formato admita inscripción masiva, nace un endpoint nuevo en vez de romper ese.
+
 ## 2026-08-25 — Tenancy en código: `ClubScopeGuard` + `@ClubId()`, y el club sale del usuario autenticado
 
 **Contexto**: el invariante de tenancy estaba documentado desde el 2026-07-16 pero nunca cableado — no había ninguna entidad con `club_id`. El slice 2 (`clubs`, `subscriptions`) es el que lo estrena, y es también el que fija cómo lo van a consumir los slices 3 y 4.

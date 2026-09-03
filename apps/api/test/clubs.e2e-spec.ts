@@ -143,10 +143,12 @@ describe('Clubs (e2e)', () => {
       expect(body.name).toBe(`Club create ${suffix}`);
       expect(body.slug).toBe(`club-create-${suffix}`);
       expect(body.status).toBe('active');
+      // Todo club nace gratis y **activo**: no hay pago que esperar, así que
+      // `pending` queda reservado para una suscripción paga sin confirmar.
       expect(body.subscription).toEqual({
-        plan: 'basic',
-        status: 'pending',
-        maxTournaments: 3,
+        plan: 'free',
+        status: 'active',
+        maxTournaments: 1,
       });
     });
 
@@ -300,7 +302,7 @@ describe('Clubs (e2e)', () => {
         (created.body as ClubResponseBody).id,
       );
       expect((response.body as ClubResponseBody).subscription.plan).toBe(
-        'basic',
+        'free',
       );
     });
 
@@ -362,7 +364,7 @@ describe('Clubs (e2e)', () => {
       expect(body.name).toBe('Nombre Nuevo');
       // El slug no se re-deriva: cambiarlo rompería URLs ya publicadas.
       expect(body.slug).toBe(`club-patch-${suffix}`);
-      expect(body.subscription.plan).toBe('basic');
+      expect(body.subscription.plan).toBe('free');
     });
 
     it('200: an empty body is a no-op that returns the current state', async () => {
