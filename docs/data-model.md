@@ -100,20 +100,22 @@ El modelo se diseña completo acá, pero se migra **por slice de feature**, no d
 
 Un slice es el grupo mínimo de tablas que hace funcionar una feature de punta a punta. No es "una tabla por PR" — las FKs obligan a que la tabla referenciada ya exista, así que las tablas que se referencian entre sí viajan juntas.
 
-| Slice         | Tablas                                                | Depende de | Habilita                                                 |
-| ------------- | ----------------------------------------------------- | ---------- | -------------------------------------------------------- |
-| 0 · Identidad | `users` ✅                                            | —          | login                                                    |
-| 1 · Jugadores | `players` ✅                                          | 0          | alcance 1: registro/alta de jugador + dedup              |
-| 2 · Tenant    | `clubs` ✅, `subscriptions` ✅                        | 0          | guard de tenancy, cuenta de organizador                  |
-| 3 · Torneo    | `tournaments` ✅, `teams` ✅                          | 1, 2       | alcance 2: crear torneo e inscribir duplas               |
-| 4 · Llave     | `matches`, `match_sets`                               | 3          | alcance 3 y 4: generar llave, cargar resultados, avanzar |
-| Fase 2        | `courts` + `matches.court_id`, `matches.scheduled_at` | 4          | programación de partidos                                 |
+| Slice         | Tablas                                                    | Depende de | Habilita                                                 |
+| ------------- | --------------------------------------------------------- | ---------- | -------------------------------------------------------- |
+| 0 · Identidad | `users` ✅                                                | —          | login                                                    |
+| 1 · Jugadores | `players` ✅                                              | 0          | alcance 1: registro/alta de jugador + dedup              |
+| 2 · Tenant    | `clubs` ✅, `subscriptions` ✅                            | 0          | guard de tenancy, cuenta de organizador                  |
+| 3 · Torneo    | `tournaments` ✅, `teams` ✅                              | 1, 2       | alcance 2: crear torneo e inscribir duplas               |
+| 4 · Llave     | `matches`, `match_sets`                                   | 3          | alcance 3 y 4: generar llave, cargar resultados, avanzar |
+| Fase 2        | `courts` + `matches.court_id`, `matches.scheduled_at`     | 4          | programación de partidos                                 |
+| Fase 3        | registro de eventos de pago + columnas en `subscriptions` | 2          | upgrade `free → basic`/`pro` con Mercado Pago            |
 
 Notas sobre el orden:
 
 - **1 antes que 2** porque `players` no lleva `club_id`: su única FK es hacia `users`, así que se puede implementar entera sin el guard de tenancy, que aparece recién en el slice 2.
 - **Las columnas de fase 2 no se migran con su tabla.** `matches` entra en el slice 4 sin `court_id` ni `scheduled_at`; agregar después un FK nullable y su índice es una migración trivial.
 - **Las migraciones en paralelo se pisan.** Con una branch por tarea, dos migraciones creadas al mismo tiempo se aplican fuera de orden y `migrate dev` pide reset en local. Si hay dos PRs tocando `prisma/`, el segundo rebasa sobre `main` y regenera su migración antes de mergear.
+- **La fase 3 no está diseñada acá y es deliberado.** Depende solo del slice 2, así que no bloquea ni la bloquea nada del 3 y el 4, y el ERD de arriba es de referencia para la fase 1. Su forma —una tabla de eventos de pago con la idempotencia del webhook, más las columnas que `subscriptions` necesite para atarse a la preaprobación de Mercado Pago— se diseña con el `db-architect` cuando la fase se abra, igual que cualquier otro slice. Lo que sí está fijado hoy es el invariante que esa tabla tiene que sostener: `plan`, `max_tournaments` y `status` se mueven **juntos**, y solo con un pago confirmado.
 
 ## Diccionario de tablas
 
