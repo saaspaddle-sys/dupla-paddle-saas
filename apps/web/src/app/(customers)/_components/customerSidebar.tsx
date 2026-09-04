@@ -138,7 +138,8 @@ export default function CustomerSidebar() {
           })}
         </nav>
       </div>
-
+      {/*
+  
       <div className="mt-auto pt-4">
         <button className="w-full flex items-center justify-center gap-2 bg-padel-green hover:bg-[#b8e600] text-deep-onyx text-sm font-black py-3 px-4 rounded-2xl shadow-md transition-all cursor-pointer mb-4">
           <svg
@@ -157,6 +158,7 @@ export default function CustomerSidebar() {
           Nuevo Torneo
         </button>
       </div>
+          */}
 
       <div className="pt-6 border-t border-gray-800/80 space-y-3">
         <div className="flex items-center gap-3 px-2">
