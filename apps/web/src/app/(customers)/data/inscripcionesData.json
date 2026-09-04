@@ -1,0 +1,51 @@
+[
+  {
+    "id": "1",
+    "jugador": "Lucas Gómez",
+    "torneo": "Copa ACOP Sexta",
+    "categoria": "Sexta",
+    "estado": "Pagado"
+  },
+  {
+    "id": "2",
+    "jugador": "Martín Silva",
+    "torneo": "Torneo Mixto Pro",
+    "categoria": "Cuarta",
+    "estado": "Pendiente"
+  },
+  {
+    "id": "3",
+    "jugador": "Martín Gómez",
+    "torneo": "Copa ACOP Sexta",
+    "categoria": "Sexta Libres",
+    "estado": "Pagado"
+  },
+  {
+    "id": "4",
+    "jugador": "Lucía Fernández",
+    "torneo": "Torneo Mixto Pro",
+    "categoria": "Mixto A",
+    "estado": "Pagado"
+  },
+  {
+    "id": "5",
+    "jugador": "Juan Pérez",
+    "torneo": "Copa ACOP Sexta",
+    "categoria": "Sexta Libres",
+    "estado": "Pendiente"
+  },
+  {
+    "id": "6",
+    "jugador": "Carlos Ruiz",
+    "torneo": "Master Final",
+    "categoria": "Primera",
+    "estado": "Pagado"
+  },
+  {
+    "id": "7",
+    "jugador": "Ana Silva",
+    "torneo": "Copa ACOP Sexta",
+    "categoria": "Sexta Damas",
+    "estado": "Pendiente"
+  }
+]
