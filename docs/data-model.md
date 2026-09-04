@@ -21,6 +21,17 @@ erDiagram
         varchar status
         int max_tournaments
     }
+    payment_events {
+        uuid id PK
+        varchar provider
+        varchar external_id "unique con provider"
+        varchar type
+        varchar action "nullable"
+        varchar resource_id
+        jsonb payload
+        timestamptz processed_at "nullable"
+        uuid subscription_id FK "nullable"
+    }
     players {
         uuid id PK
         uuid user_id FK "nullable, unique"
@@ -80,6 +91,7 @@ erDiagram
     }
 
     users ||--o| subscriptions : paga
+    subscriptions ||--o{ payment_events : "se mueve por"
     users ||--o| players : "es (opcional)"
     users ||--o{ clubs : "es dueño"
     clubs ||--o{ tournaments : organiza
@@ -105,29 +117,32 @@ Un slice es el grupo mínimo de tablas que hace funcionar una feature de punta a
 | 0 · Identidad | `users` ✅                                            | —          | login                                                    |
 | 1 · Jugadores | `players` ✅                                          | 0          | alcance 1: registro/alta de jugador + dedup              |
 | 2 · Tenant    | `clubs` ✅, `subscriptions` ✅                        | 0          | guard de tenancy, cuenta de organizador                  |
-| 3 · Torneo    | `tournaments`, `teams`                                | 1, 2       | alcance 2: crear torneo e inscribir duplas               |
+| 3 · Torneo    | `tournaments` ✅, `teams` ✅                          | 1, 2       | alcance 2: crear torneo e inscribir duplas               |
 | 4 · Llave     | `matches`, `match_sets`                               | 3          | alcance 3 y 4: generar llave, cargar resultados, avanzar |
 | Fase 2        | `courts` + `matches.court_id`, `matches.scheduled_at` | 4          | programación de partidos                                 |
+| Fase 3        | `payment_events` ✅                                   | 2          | upgrade `free → basic`/`pro` con Mercado Pago            |
 
 Notas sobre el orden:
 
 - **1 antes que 2** porque `players` no lleva `club_id`: su única FK es hacia `users`, así que se puede implementar entera sin el guard de tenancy, que aparece recién en el slice 2.
 - **Las columnas de fase 2 no se migran con su tabla.** `matches` entra en el slice 4 sin `court_id` ni `scheduled_at`; agregar después un FK nullable y su índice es una migración trivial.
 - **Las migraciones en paralelo se pisan.** Con una branch por tarea, dos migraciones creadas al mismo tiempo se aplican fuera de orden y `migrate dev` pide reset en local. Si hay dos PRs tocando `prisma/`, el segundo rebasa sobre `main` y regenera su migración antes de mergear.
+- **`payment_events` es la única tabla migrada por adelantado, y es una excepción consciente a la regla de arriba.** Depende solo del slice 2 y no bloquea nada del 3 ni del 4. Se adelantó porque su forma no es una apuesta: sale del contrato publicado de las notificaciones de Mercado Pago (`id`, `type`, `action`, `data.id`), y la columna `payload` guarda el original entero, así que la integración puede leer lo que necesite sin que haya hecho falta adivinar columnas hoy. El costo asumido es que vive migrada y sin código que la use hasta que la fase se abra. Lo que **sí** falta decidir con la integración son las columnas que `subscriptions` necesite para atarse a la preaprobación; esas entran con el código que las escribe.
 
 ## Diccionario de tablas
 
 ### Identidad y billing
 
 - **`users`** — identidad de login (email + contraseña). **Sin rol**: "organizador" se deriva de tener un `club`, "jugador" de tener un `player`. Un mismo usuario puede ser ambos.
-- **`subscriptions`** — suscripción del usuario dueño (1:1). El plan define cuotas (p. ej. `max_tournaments`). Arranca en `pending` (cobro manual); se activa a mano hasta integrar Mercado Pago.
+- **`subscriptions`** — suscripción del usuario dueño (1:1). El plan define cuotas (p. ej. `max_tournaments`). Arranca en **`free` y `active`**: una llave activa, suficiente para correr una categoría entera y descubrir el producto. `basic` (3) y `pro` (12) son pagos y se activan a mano hasta integrar Mercado Pago — ahí `pending` significa lo que dice, una suscripción paga esperando confirmación. Ver la entrada del 2026-09-03 en [decisions.md](./decisions.md).
+- **`payment_events`** — bitácora de notificaciones de la pasarela (fase 3). **No es auditoría: es lo que hace idempotente al webhook.** Mercado Pago reintenta cada 15 minutos hasta recibir un `200`/`201` y después del tercer intento sigue espaciado, así que la misma notificación llega varias veces; aplicarla dos veces sería regalar cuota. El `UNIQUE (provider, external_id)` es la garantía, y es un índice de base y no un `SELECT` previo porque bajo concurrencia dos reintentos simultáneos leerían ambos "no existe". `processed_at` es nullable a propósito: la fila se inserta **antes** de aplicar el efecto, así que un proceso que muere en el medio deja evidencia de que el pago llegó y todavía no se aplicó — sin esa columna, el reintento chocaría contra el `UNIQUE` y se saltearía en silencio, dejando un pago cobrado sin servicio. Migrada sin código que la use todavía.
 - **`players`** — perfil global de competidor, **sin `club_id`**. `user_id` nullable: un jugador puede existir sin cuenta (pre-cargado por el organizador) hasta que se registre y reclame el perfil. Es la entidad que habilita historial/ranking cross-club. `dni` es `NOT NULL` y `UNIQUE` — es la clave de dedup (ver "dedup por DNI" en `decisions.md`); nunca sale en una respuesta de la API. `email` es el contacto del perfil (no `@unique`: familias/parejas pueden compartirlo) y es independiente de `users.email`, que es la credencial de login. Los datos deportivos (`category`, `gender`, `dominant_hand`) y los de contacto/residencia (`country`, `province`, `phone`, `emergency_phone`) viven acá y no en `users` por la misma razón: son atributos de la persona competidora, y un perfil precargado por un club (sin `user_id`) también los tiene.
 - **`clubs`** — el tenant. `owner_id` → usuario dueño. En el MVP hay un club por dueño (el schema soporta varios).
 
 ### Torneo
 
-- **`tournaments`** — el torneo, propiedad del club (`club_id`).
-- **`teams`** — la dupla inscripta en un torneo (`player1_id` + `player2_id`). **Es la inscripción**; solo dobles en el MVP.
+- **`tournaments`** — el torneo, propiedad del club (`club_id`). Estados `open` / `in_progress` / `finished` / `canceled`; los dos primeros consumen cuota. Lleva un `UNIQUE (id, club_id)` que a primera vista es redundante —`id` ya es PK— pero es el blanco obligado de la FK compuesta de `teams`.
+- **`teams`** — la dupla inscripta en un torneo (`player1_id` + `player2_id`). **Es la inscripción**; solo dobles en el MVP. El par se guarda en **orden canónico**, garantizado por el `CHECK teams_canonical_order` (`player1_id < player2_id`): sin él, el `UNIQUE (tournament_id, player1_id, player2_id)` dejaría entrar (A,B) y (B,A) como dos duplas distintas. Ese `CHECK` es SQL crudo en la migración porque Prisma no lo modela.
 - **`matches`** — partido de la llave. `next_match_id` + `next_slot` modelan el avance automático del bracket. `court_id` / `scheduled_at` son de fase 2.
 - **`match_sets`** — resultado por set de un partido.
 
@@ -138,6 +153,6 @@ Notas sobre el orden:
 ## Notas de diseño
 
 - **IDs como `UUID` v7.** Claves primarias y foráneas son UUID, no enteros autoincrementales. Se usa **UUIDv7** (time-ordered) para que los inserts caigan casi secuenciales y no fragmenten el índice del PK como haría el v4 aleatorio. Los genera la app vía Prisma (`@default(uuid(7))`), no la base — el Postgres del compose es 17 y `uuidv7()` nativo recién existe en PG 18. Ver [decisions.md](./decisions.md).
-- **`club_id` denormalizado** en todas las tablas de club (`tournaments`, `teams`, `matches`, `courts`) e indexado. Cumple el invariante de tenancy y deja que cada guard filtre por `club_id` directo, sin joins. Es seguro porque el club de una fila nunca cambia.
+- **`club_id` denormalizado** en todas las tablas de club (`tournaments`, `teams`, `matches`, `courts`) e indexado. Cumple el invariante de tenancy y deja que cada guard filtre por `club_id` directo, sin joins. Es seguro porque el club de una fila nunca cambia. En las tablas que **no** cuelgan del club directamente, esa copia se valida con una **FK compuesta** contra la tabla de la que se copió, para que no pueda desincronizarse: `teams(tournament_id, club_id)` → `tournaments(id, club_id)`. `matches` y `match_sets` siguen el mismo patrón cuando entren en el slice 4. Ver la entrada del 2026-09-02 en [decisions.md](./decisions.md).
 - **Enums como `varchar`** en el DDL de referencia para que draw.io los importe; en Prisma serán enums nativos.
 - **Rol / multi-staff**: cuando exista staff con permisos (owner/admin/planillero), vive en un futuro `club_memberships (user_id, club_id, role)`, no en `users`. Fuera del MVP.

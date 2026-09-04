@@ -60,6 +60,11 @@ model Player {
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  // Dos back-relations y no una: una dupla referencia al jugador por dos
+  // columnas distintas, así que Prisma exige nombrarlas para desambiguar.
+  asPlayer1 Team[] @relation("TeamPlayer1")
+  asPlayer2 Team[] @relation("TeamPlayer2")
+
   @@map("players")
 }
 
@@ -96,6 +101,9 @@ model Club {
   // base se niega.
   owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
+  tournaments Tournament[]
+  teams       Team[]
+
   // Sin `@unique`: el schema soporta varios clubes por dueño y el cupo se
   // capea en la app. Hoy ese cupo es 1 y lo enforcea de rebote el índice
   // único de `subscriptions.user_id` — ver el comentario de ese modelo.
@@ -120,7 +128,11 @@ model Subscription {
   // Read Committed el SELECT de cuota previo no alcanza, el índice sí.
   userId String @unique @map("user_id") @db.Uuid
 
-  plan   SubscriptionPlan   @default(basic)
+  // Los dos defaults son deliberadamente los de menor privilegio: una fila
+  // insertada sin plan cae en el gratuito y no en uno pago, y una insertada
+  // sin estado nace inactiva. `ClubsService.create` escribe los tres campos
+  // explícitamente, así que estos defaults son la red y no el camino normal.
+  plan   SubscriptionPlan   @default(free)
   status SubscriptionStatus @default(pending)
 
   // Cuota guardada por suscripción y no derivada del plan en tiempo de
@@ -133,14 +145,19 @@ model Subscription {
   // `Cascade` acá y `Restrict` en `clubs.owner_id`: la suscripción no
   // tiene valor histórico propio, pero igual no queda huérfana en la
   // práctica — no se puede borrar un usuario que tenga club.
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentEvents PaymentEvent[]
 
   @@map("subscriptions")
 }
 
-/// Los dos son pagos. Lo gratuito del producto es que el jugador no tiene
-/// suscripción en absoluto (`User.subscription` es opcional).
+/// `free` es el plan de entrada de todo club: una llave activa, suficiente
+/// para correr una categoría entera de punta a punta (llave autogenerada,
+/// resultados, vista pública) y descubrir el producto. `basic` y `pro` son
+/// pagos. Un jugador sigue sin tener suscripción en absoluto
+/// (`User.subscription` es opcional): `free` es del club, no del jugador.
 enum SubscriptionPlan {
+  free
   basic
   pro
 
@@ -153,4 +170,154 @@ enum SubscriptionStatus {
   canceled
 
   @@map("subscription_status")
+}
+
+/// Un solo valor hoy, igual que `TournamentFormat`: el enum existe para que
+/// sumar una pasarela después sea aditivo y no un cambio de tipo sobre una
+/// columna publicada.
+enum PaymentProvider {
+  mercado_pago
+
+  @@map("payment_provider")
+}
+
+/// Bitácora de notificaciones de la pasarela. **Existe para que el webhook
+/// sea idempotente**, no para auditar: Mercado Pago reintenta cada 15
+/// minutos hasta recibir un 200/201 y después del tercer intento sigue
+/// espaciado, así que la misma notificación llega varias veces y aplicarla
+/// dos veces sería regalar cuota. `subscriptions` sola no puede contestar
+/// "¿este pago ya lo apliqué?" porque guarda el estado final, no los
+/// eventos que lo produjeron.
+///
+/// El flujo que esta tabla habilita, y el motivo de que `processed_at` sea
+/// nullable: se inserta la fila **antes** de aplicar nada. Si el INSERT
+/// choca contra el unique, la notificación ya se vio: se mira
+/// `processed_at` y solo se responde 200 si además ya se aplicó. Sin esa
+/// columna, un proceso que muere entre el INSERT y el efecto dejaría el
+/// pago cobrado y nunca aplicado, porque el reintento chocaría contra el
+/// unique y se saltearía en silencio.
+///
+/// Tabla de la fase 3 (`docs/product-brief.md`): migrada, todavía sin
+/// código que la use.
+model PaymentEvent {
+  id       String          @id @default(uuid(7)) @db.Uuid
+  provider PaymentProvider @default(mercado_pago)
+
+  /// El `id` de la notificación. Es lo que corta los reintentos.
+  externalId String @map("external_id")
+
+  /// `type`, `action` y `data.id` del payload de Mercado Pago. `action` es
+  /// nullable porque no toda notificación lo trae.
+  type       String
+  action     String?
+  resourceId String  @map("resource_id")
+
+  /// El payload crudo, tal cual llegó. Guardarlo entero es lo que permite
+  /// reprocesar sin haber tenido que adivinar hoy las columnas de una
+  /// integración que todavía no se escribió.
+  payload Json @db.JsonB
+
+  receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(3)
+
+  /// A qué suscripción se aplicó. Nullable: la fila nace antes de que el
+  /// evento se resuelva, y una notificación puede no corresponder a
+  /// ninguna suscripción conocida.
+  subscriptionId String?       @map("subscription_id") @db.Uuid
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  /// La garantía de idempotencia, y por eso es un unique de la base y no un
+  /// `SELECT` previo: bajo concurrencia dos reintentos simultáneos leerían
+  /// ambos "no existe" y aplicarían los dos.
+  @@unique([provider, externalId])
+  /// El efecto se aplica sobre el recurso, no sobre la notificación: MP
+  /// manda varias notificaciones distintas sobre el mismo pago
+  /// (`payment.created`, `payment.updated`), así que el handler también
+  /// necesita poder buscar por recurso.
+  @@index([provider, type, resourceId])
+  @@index([subscriptionId])
+  @@map("payment_events")
+}
+
+/// El torneo, propiedad del club. Primera tabla del proyecto con `club_id`:
+/// acá el guard de tenancy del slice 2 empieza a filtrar algo.
+model Tournament {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  clubId    String           @map("club_id") @db.Uuid
+  name      String
+  format    TournamentFormat @default(single_elimination)
+  status    TournamentStatus @default(open)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // `Restrict` por la misma razón que `clubs.owner_id`: borrar un club no
+  // puede evaporar torneos jugados.
+  club  Club   @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  teams Team[]
+
+  // Compuesto y no `[clubId]` solo: la query de cuota filtra por club *y*
+  // status, y es la que corre en cada POST.
+  @@index([clubId, status])
+  // Blanco de la FK compuesta de `Team`. Como unicidad es redundante —`id`
+  // ya es PK—, pero Postgres exige un unique sobre las columnas
+  // referenciadas para aceptar esa FK.
+  @@unique([id, clubId])
+  @@map("tournaments")
+}
+
+enum TournamentStatus {
+  open
+  in_progress
+  finished
+  canceled
+
+  @@map("tournament_status")
+}
+
+/// Un solo valor hoy. El enum existe para que sumar formatos después sea
+/// aditivo y no un cambio de tipo sobre una columna publicada.
+enum TournamentFormat {
+  single_elimination
+
+  @@map("tournament_format")
+}
+
+/// La dupla inscripta. **Es** la inscripción: no hay tabla aparte. Solo
+/// dobles en el MVP, y eso está codificado en el schema — son dos columnas,
+/// no una tabla puente que aceptaría 1 o 3 jugadores.
+model Team {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  // Copia denormalizada de `tournaments.club_id`: es derivable con un join,
+  // y se guarda igual para que el guard filtre con la misma forma en toda
+  // tabla de club (invariante de tenancy). La FK compuesta de abajo es lo
+  // que impide que la copia mienta.
+  clubId       String   @map("club_id") @db.Uuid
+  tournamentId String   @map("tournament_id") @db.Uuid
+  player1Id    String   @map("player1_id") @db.Uuid
+  player2Id    String   @map("player2_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Restrict)
+
+  // Dos columnas y no una: la FK valida `tournament_id` *y* que el `club_id`
+  // de la fila sea el del torneo. `clubId` participa acá y en la relación de
+  // arriba a la vez, y Prisma lo acepta.
+  tournament Tournament @relation(fields: [tournamentId, clubId], references: [id, clubId], onDelete: Cascade)
+
+  // `Restrict`: un jugador con historial no desaparece por un DELETE.
+  player1 Player @relation("TeamPlayer1", fields: [player1Id], references: [id], onDelete: Restrict)
+  player2 Player @relation("TeamPlayer2", fields: [player2Id], references: [id], onDelete: Restrict)
+
+  // Con el orden canónico (ver el CHECK de la migración), esto sí impide que
+  // la misma dupla entre dos veces: sin él, (A,B) y (B,A) son dos filas.
+  @@unique([tournamentId, player1Id, player2Id])
+  // Sin `@@index([tournamentId])`: el unique de arriba ya lo cubre como
+  // prefijo izquierdo. Un segundo índice sobre la misma columna no acelera
+  // ninguna query y cuesta en cada escritura.
+  @@index([clubId])
+  @@index([player1Id])
+  @@index([player2Id])
+  @@map("teams")
 }

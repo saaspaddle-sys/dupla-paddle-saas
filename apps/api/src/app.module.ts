@@ -10,6 +10,7 @@ import { validationExceptionFactory } from './common/pipes/validation-exception.
 import { HealthModule } from './health/health.module';
 import { PlayersModule } from './players/players.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { TournamentsModule } from './tournaments/tournaments.module';
 
 @Module({
   imports: [
@@ -28,8 +29,10 @@ import { PrismaModule } from './prisma/prisma.module';
     PlayersModule,
     AuthModule,
     // La lista se lee como orden de dependencia (Prisma -> Health ->
-    // Players -> Auth -> Clubs); en Nest el orden no es funcional.
+    // Players -> Auth -> Clubs -> Tournaments); en Nest el orden no es
+    // funcional.
     ClubsModule,
+    TournamentsModule,
   ],
   providers: [
     // Registrados acá como providers (APP_PIPE/APP_FILTER) y no con
