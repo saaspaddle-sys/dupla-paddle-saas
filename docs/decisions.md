@@ -2,6 +2,18 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-05 — "Esto es la final" no se deriva de que el puntero de avance sea nulo
+
+**Contexto**: al diseñar la carga de resultados, la regla natural es "si el partido no tiene `next_match_id`, es la final, así que cerrá el torneo". Es cierta hoy y sería una trampa mañana.
+
+**Decisión**: la condición se escribe **explícita** desde el primer día, no derivada del puntero nulo.
+
+**Por qué**: el enum `TournamentFormat` existe para admitir formatos nuevos, y el más probable es zonas + llave (muy común en el pádel amateur argentino, y la respuesta natural a "¿por qué el sembrado juega menos partidos?"). Un partido de zona **también** tiene el puntero nulo —no avanza a ningún partido, alimenta una tabla de posiciones—, así que la regla del puntero marcaría un torneo como terminado al cargar el resultado de un partido de grupo. El modo de falla es silencioso y con datos reales adentro.
+
+Cuando exista ese formato se agrega una columna `phase` (`group`/`knockout`), que es aditiva, y la condición pasa a ser "sin puntero **y** de fase knockout".
+
+**Consecuencias**: sirve además como evaluación de cuánto costaría el formato de zonas, que es más aditivo de lo que parece. Se reusan enteros `matches`, `match_sets`, la carga de resultados con su validador de scores de pádel, y todo el patrón de tenancy. Lo genuinamente nuevo son tres cosas: la tabla de posiciones con sus desempates (que se resuelven **solo entre los empatados**, no contra todo el torneo), el algoritmo de cruce de clasificados —el primero de una zona no puede cruzarse con el segundo de la misma en la primera ronda—, y el sorteo de zonas con las cabezas repartidas una por grupo. Además se rompen dos invariantes de hoy: `in_progress ⟺ existe el bracket` (con zonas la llave se genera en el medio del torneo) y `(round, position)` como coordenadas de un árbol.
+
 ## 2026-09-03 — Fase 3: degradación hacia adelante, cuota simultánea con cobro mensual, y `payment_events` para la idempotencia del webhook
 
 **Contexto**: con el plan `free` explícito (entrada de abajo), el upgrade a plan pago pasó de idea vaga a siguiente paso del modelo de negocio, y entró al alcance como fase 3 en `docs/product-brief.md`. Quedaban tres preguntas que había que cerrar **antes** de escribir el webhook, no después. Se cierran acá.
