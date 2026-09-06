@@ -2,6 +2,25 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-05 — Slice 4: el sistema sortea la llave respetando cabezas de serie, y los byes van a las sembradas
+
+**Contexto**: el slice 4 genera la llave. Había que decidir en qué orden entran las duplas al cuadro, y qué pasa cuando la cantidad no es potencia de 2 —que es casi siempre— y sobran lugares.
+
+**Decisión**:
+
+- **El sorteo lo hace el sistema, con cabezas de serie.** `teams.seed` es un `Int?` nullable con `UNIQUE (tournament_id, seed)`: las duplas sembradas van a las posiciones protegidas del cuadro y **el resto se sortea** entre los lugares que quedan. Es el híbrido de los torneos reales. Se descartó el orden de inscripción, que le regalaría el cuadro fácil al que se anotó primero, y se descartó el azar puro, que puede cruzar a las dos mejores en primera ronda y arruinar el torneo antes de empezar.
+- **`seed` es editable y no un dato de alta** (`PATCH /tournaments/:id/teams/:teamId`, solo con el torneo `open`): el club decide las cabezas cuando cierra la inscripción y ya sabe quién se anotó. Los `NULL` no colisionan entre sí en el índice único, así que cualquier cantidad de duplas sin sembrar convive.
+- **Las cabezas tienen que ser `1..k` sin huecos** al generar, o `409 invalid_seeding`. Con seeds 1, 2 y 7 la posición 3 del cuadro quedaría vacía mientras existe una cabeza 7: es un error del club, no un cuadro que la API deba inventar.
+- **Los byes van a las sembradas**, y no hace falta código que los reparta: sale de la secuencia de siembra. Los lugares vacíos son los números de entrada más altos, y cada uno se empareja con el más bajo disponible, así que caen enfrente de las mejores cabezas. Es además la regla real de un torneo, donde el bye es el premio a la siembra.
+
+**Se evaluó y se descartó sortear los byes entre todas.** Suena más justo y es peor: una dupla débil se lleva el pase gratis y las dos mejores pueden cruzarse en primera ronda, que es exactamente lo que la siembra existe para evitar. El bye es inevitable —en eliminación directa el cuadro es potencia de 2 y alguien se saltea la primera ronda—, así que la única pregunta posible es quién, y de los criterios disponibles el sembrado es el menos arbitrario.
+
+**Consecuencias**: con sorteo, borrar y volver a generar da **un cuadro distinto**. Eso es correcto (un resorteo es un sorteo nuevo) pero implica que **el bracket generado es el único registro del sorteo**: no se puede reconstruir, así que borrarlo destruye información irrecuperable. Por eso `DELETE /bracket` exige que no haya ni un resultado cargado.
+
+También cambia cómo se testea el generador: ya no vale "mismo input, mismo output". El barajado entra **inyectado**, los tests usan uno determinista, y lo que se fija son los invariantes que valen siempre — `S−1` partidos, las cabezas en sus posiciones protegidas, ningún bye contra otro bye, y ningún bye en el lado A.
+
+Queda anotado que **la siembra hoy la decide el club a dedo**: no hay ranking, y `players.category` no ordena nada. La mitigación no es cambiar el algoritmo sino que se vea — el cuadro guarda `outcome: 'bye'` y el número de siembra, así que la vista pública puede mostrar quién se salteó la primera ronda y por qué.
+
 ## 2026-09-05 — "Esto es la final" no se deriva de que el puntero de avance sea nulo
 
 **Contexto**: al diseñar la carga de resultados, la regla natural es "si el partido no tiene `next_match_id`, es la final, así que cerrá el torneo". Es cierta hoy y sería una trampa mañana.

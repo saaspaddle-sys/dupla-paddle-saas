@@ -299,8 +299,21 @@ model Team {
   tournamentId String   @map("tournament_id") @db.Uuid
   player1Id    String   @map("player1_id") @db.Uuid
   player2Id    String   @map("player2_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // Cabeza de serie. `NULL` es lo normal: significa "no sembrada, entra al
+  // sorteo". Las sembradas van a posiciones protegidas del cuadro y el resto
+  // se sortea entre los lugares que quedan, que es como se arma un torneo de
+  // verdad. El club las fija cuando cierra la inscripción y ya sabe quién se
+  // anotó, no al inscribir — por eso es una columna editable y no un dato de
+  // alta.
+  //
+  // El unique de abajo impide dos "seed 1" en el mismo torneo. Los `NULL` no
+  // colisionan entre sí en Postgres, así que cualquier cantidad de duplas sin
+  // sembrar convive sin problema.
+  seed Int?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Restrict)
 
@@ -320,6 +333,8 @@ model Team {
   // Con el orden canónico (ver el CHECK de la migración), esto sí impide que
   // la misma dupla entre dos veces: sin él, (A,B) y (B,A) son dos filas.
   @@unique([tournamentId, player1Id, player2Id])
+  // Una cabeza de serie por número, por torneo.
+  @@unique([tournamentId, seed])
   // Blanco de las FKs compuestas de `Match`. Es el mismo truco que
   // `Tournament.@@unique([id, clubId])`: redundante como unicidad, obligatorio
   // como destino de una FK que valida dos columnas a la vez.
