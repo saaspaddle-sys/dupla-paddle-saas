@@ -29,8 +29,8 @@ export class PlayerSummaryDto {
  * ella.
  *
  * Sin `clubId`, por lo mismo que `TournamentResponseDto`. Sin `updatedAt`:
- * una dupla no se edita —se borra y se inscribe otra—, así que sería
- * siempre igual a `createdAt`.
+ * la dupla ahora sí se edita (`seed`), pero nadie del otro lado necesita
+ * todavía saber cuándo — y sumarlo después es aditivo.
  */
 export class TeamResponseDto {
   id!: string;
@@ -41,6 +41,14 @@ export class TeamResponseDto {
 
   player1!: PlayerSummaryDto;
   player2!: PlayerSummaryDto;
+
+  /**
+   * Cabeza de serie, o `null` si la dupla entra al sorteo. Lo fija el club
+   * con `PATCH /tournaments/:tournamentId/teams/:teamId` mientras el torneo
+   * está `open`; lo normal es que la mayoría sean `null`.
+   */
+  @ApiProperty({ type: Number, nullable: true })
+  seed!: number | null;
 
   /** ISO 8601. Es el orden de inscripción. */
   createdAt!: string;

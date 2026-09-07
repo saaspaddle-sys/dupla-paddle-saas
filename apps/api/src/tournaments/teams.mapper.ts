@@ -40,6 +40,7 @@ export function toTeamResponse(team: TeamWithPlayers): TeamResponseDto {
     tournamentId: team.tournamentId,
     player1: toPlayerSummary(team.player1),
     player2: toPlayerSummary(team.player2),
+    seed: team.seed,
     createdAt: team.createdAt.toISOString(),
   };
 }

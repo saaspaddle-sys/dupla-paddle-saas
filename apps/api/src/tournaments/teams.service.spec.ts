@@ -1,5 +1,7 @@
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTeamDto } from './dto/create-team.dto';
+import { UpdateTeamDto } from './dto/update-team.dto';
 import { canonicalPair, TeamsService } from './teams.service';
 
 type PrismaMock = {
@@ -10,6 +12,7 @@ type PrismaMock = {
     findFirst: jest.Mock;
     findMany: jest.Mock;
     create: jest.Mock;
+    update: jest.Mock;
     deleteMany: jest.Mock;
   };
 };
@@ -45,6 +48,7 @@ const TEAM_ROW = {
   tournamentId: 'tournament-1',
   player1Id: PLAYER_A.id,
   player2Id: PLAYER_B.id,
+  seed: null,
   createdAt: new Date('2026-08-24T12:05:00.000Z'),
   updatedAt: new Date('2026-08-24T12:05:00.000Z'),
   player1: PLAYER_A,
@@ -59,6 +63,64 @@ function createDto(
   dto.player1Id = player1Id;
   dto.player2Id = player2Id;
   return dto;
+}
+
+/**
+ * Sin argumento deja `seed` en `undefined`, que es exactamente lo que produce
+ * `class-transformer` cuando el body no trae el campo. Es la única forma de
+ * probar que el no-op y el desiembre son caminos distintos.
+ */
+function updateDto(seed?: number | null): UpdateTeamDto {
+  const dto = new UpdateTeamDto();
+  dto.seed = seed;
+  return dto;
+}
+
+function uniqueViolation(
+  target: string[],
+): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: { target },
+  });
+}
+
+/**
+ * La forma que produce de verdad `@prisma/adapter-pg`: sin `meta.target`. Es
+ * la que llega en producción, así que el mapeo a 409 tiene que probarse
+ * también contra ella y no solo contra el mock cómodo de arriba.
+ */
+function adapterUniqueViolation(
+  fields: string[],
+): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: {
+      modelName: 'Team',
+      driverAdapterError: {
+        name: 'DriverAdapterError',
+        cause: {
+          originalCode: '23505',
+          originalMessage: 'duplicate key value violates unique constraint',
+          kind: 'UniqueConstraintViolation',
+          constraint: { fields },
+        },
+      },
+    },
+  });
+}
+
+/** Lo que tira Prisma cuando el `update` no encontró la fila. */
+function recordNotFound(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Record to update not found',
+    {
+      code: 'P2025',
+      clientVersion: 'test',
+    },
+  );
 }
 
 /**
@@ -90,6 +152,7 @@ describe('TeamsService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue(TEAM_ROW),
+        update: jest.fn().mockResolvedValue({ ...TEAM_ROW, seed: 1 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
@@ -239,6 +302,184 @@ describe('TeamsService', () => {
         prisma.team.create,
       );
       expect(call.data.clubId).toBe('club-from-the-loaded-tournament');
+    });
+  });
+
+  describe('updateSeed', () => {
+    it('seeds the team and returns the mapped response', async () => {
+      const response = await service.updateSeed(
+        'club-1',
+        'tournament-1',
+        'team-1',
+        updateDto(1),
+      );
+
+      expect(response.seed).toBe(1);
+      const call = lastArgument<{
+        where: { id_tournamentId: { id: string; tournamentId: string } };
+        data: { seed: number | null };
+      }>(prisma.team.update);
+      expect(call.where.id_tournamentId).toEqual({
+        id: 'team-1',
+        tournamentId: 'tournament-1',
+      });
+      expect(call.data).toEqual({ seed: 1 });
+    });
+
+    // El caso que separa "no me lo mandaste" de "quiero borrarlo". Los dos
+    // llegan con el campo en el DTO; lo que los distingue es `undefined` vs
+    // `null`.
+    it('clears the seed when it comes as an explicit null', async () => {
+      prisma.team.update.mockResolvedValue({ ...TEAM_ROW, seed: null });
+
+      const response = await service.updateSeed(
+        'club-1',
+        'tournament-1',
+        'team-1',
+        updateDto(null),
+      );
+
+      expect(response.seed).toBeNull();
+      const call = lastArgument<{ data: { seed: number | null } }>(
+        prisma.team.update,
+      );
+      expect(call.data).toEqual({ seed: null });
+    });
+
+    it('is a no-op that never writes when seed is absent from the body', async () => {
+      prisma.team.findFirst.mockResolvedValue({ ...TEAM_ROW, seed: 4 });
+
+      const response = await service.updateSeed(
+        'club-1',
+        'tournament-1',
+        'team-1',
+        updateDto(),
+      );
+
+      // Lo importante no es el 200: es que no se haya tocado la fila. Un
+      // `update` con `data: {}` movería `updatedAt`, que es escribir.
+      expect(prisma.team.update).not.toHaveBeenCalled();
+      expect(response.seed).toBe(4);
+    });
+
+    it('rejects with 404 team_not_found when the no-op cannot find the team', async () => {
+      prisma.team.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateSeed(
+          'club-1',
+          'tournament-1',
+          'unknown-team',
+          updateDto(),
+        ),
+      ).rejects.toMatchObject({
+        status: 404,
+        response: expect.objectContaining({
+          code: 'team_not_found',
+        }) as unknown,
+      });
+    });
+
+    it('maps P2025 from the update into 404 team_not_found', async () => {
+      prisma.team.update.mockRejectedValue(recordNotFound());
+
+      await expect(
+        service.updateSeed(
+          'club-1',
+          'tournament-1',
+          'unknown-team',
+          updateDto(2),
+        ),
+      ).rejects.toMatchObject({
+        status: 404,
+        response: expect.objectContaining({
+          code: 'team_not_found',
+        }) as unknown,
+      });
+    });
+
+    // El índice único es la garantía real de "una cabeza por número": no hay
+    // SELECT previo que la sostenga, así que este mapeo es el camino normal
+    // del error y no un fallback.
+    it.each([['seed'], ['teams_tournament_id_seed_key']])(
+      'maps a P2002 on %s into 409 duplicate_seed with the number that clashed',
+      async (target) => {
+        prisma.team.update.mockRejectedValue(uniqueViolation([target]));
+
+        await expect(
+          service.updateSeed('club-1', 'tournament-1', 'team-1', updateDto(2)),
+        ).rejects.toMatchObject({
+          status: 409,
+          response: expect.objectContaining({
+            code: 'duplicate_seed',
+            details: { seed: 2 },
+          }) as unknown,
+        });
+      },
+    );
+
+    it('maps the real driver-adapter shape, which carries no meta.target', async () => {
+      prisma.team.update.mockRejectedValue(
+        adapterUniqueViolation(['tournament_id', 'seed']),
+      );
+
+      await expect(
+        service.updateSeed('club-1', 'tournament-1', 'team-1', updateDto(2)),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          code: 'duplicate_seed',
+        }) as unknown,
+      });
+    });
+
+    it('lets an unrecognized unique violation surface instead of disguising it as a 409', async () => {
+      const unrelated = uniqueViolation(['some_other_index']);
+      prisma.team.update.mockRejectedValue(unrelated);
+
+      await expect(
+        service.updateSeed('club-1', 'tournament-1', 'team-1', updateDto(2)),
+      ).rejects.toBe(unrelated);
+    });
+
+    it.each(['in_progress', 'finished', 'canceled'] as const)(
+      'rejects with 409 tournament_not_open when the tournament is %s',
+      async (status) => {
+        prisma.tournament.findFirst.mockResolvedValue({
+          ...TOURNAMENT_ROW,
+          status,
+        });
+
+        await expect(
+          service.updateSeed('club-1', 'tournament-1', 'team-1', updateDto(1)),
+        ).rejects.toMatchObject({
+          status: 409,
+          response: expect.objectContaining({
+            code: 'tournament_not_open',
+          }) as unknown,
+        });
+        expect(prisma.team.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects with 404 tournament_not_found before touching the team', async () => {
+      prisma.tournament.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateSeed(
+          'club-1',
+          'other-tournament',
+          'team-1',
+          updateDto(1),
+        ),
+      ).rejects.toMatchObject({
+        status: 404,
+        response: expect.objectContaining({
+          code: 'tournament_not_found',
+        }) as unknown,
+      });
+      expect(prisma.team.update).not.toHaveBeenCalled();
+      expect(prisma.team.findFirst).not.toHaveBeenCalled();
     });
   });
 

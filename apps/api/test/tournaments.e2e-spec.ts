@@ -40,6 +40,7 @@ interface TeamResponseBody {
   tournamentId: string;
   player1: PlayerSummaryBody;
   player2: PlayerSummaryBody;
+  seed: number | null;
   createdAt: string;
 }
 
@@ -168,6 +169,23 @@ describe('Tournaments and teams (e2e)', () => {
       .expect(201);
 
     return response.body as TournamentResponseBody;
+  }
+
+  /** Inscribe una dupla nueva (dos jugadores recién registrados) en el torneo. */
+  async function createTeam(
+    token: string,
+    tournamentId: string,
+    testCase: string,
+  ): Promise<TeamResponseBody> {
+    const playerA = await registerPlayer(`${testCase}-a`);
+    const playerB = await registerPlayer(`${testCase}-b`);
+    const response = await request(app.getHttpServer())
+      .post(`/tournaments/${tournamentId}/teams`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ player1Id: playerA.id, player2Id: playerB.id })
+      .expect(201);
+
+    return response.body as TeamResponseBody;
   }
 
   beforeAll(async () => {
@@ -592,6 +610,207 @@ describe('Tournaments and teams (e2e)', () => {
 
       expect(response.status).toBe(409);
       expect((response.body as ErrorBody).code).toBe('tournament_not_open');
+    });
+  });
+
+  describe('PATCH /tournaments/:tournamentId/teams/:teamId', () => {
+    it('200: seeds a team, and the seed comes back in the list', async () => {
+      const club = await createClub('seed');
+      const tournament = await createTournament(club.token, 'seed');
+      const team = await createTeam(club.token, tournament.id, 'seed');
+
+      expect(team.seed).toBeNull();
+
+      const response = await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed: 1 })
+        .expect(200);
+
+      expect((response.body as TeamResponseBody).seed).toBe(1);
+
+      const list = await request(app.getHttpServer())
+        .get(`/tournaments/${tournament.id}/teams`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .expect(200);
+      expect((list.body as TeamResponseBody[])[0].seed).toBe(1);
+    });
+
+    /**
+     * Este test y el siguiente son el par que sostiene el contrato: un `null`
+     * explícito desiembra y un campo ausente no toca nada. Se prueban por
+     * HTTP y no en el service porque lo que se está fijando es que el
+     * `ValidationPipe` y `class-transformer` conserven esa diferencia — un
+     * `@IsOptional()` mal puesto, o un `whitelist` que se coma el `null`,
+     * colapsaría los dos casos en uno y el service nunca se enteraría.
+     */
+    it('200: an explicit null unseeds the team', async () => {
+      const club = await createClub('unseed');
+      const tournament = await createTournament(club.token, 'unseed');
+      const team = await createTeam(club.token, tournament.id, 'unseed');
+
+      await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed: 2 })
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed: null })
+        .expect(200);
+
+      expect((response.body as TeamResponseBody).seed).toBeNull();
+    });
+
+    it('200: an empty body leaves the seed untouched', async () => {
+      const club = await createClub('seed-noop');
+      const tournament = await createTournament(club.token, 'seed-noop');
+      const team = await createTeam(club.token, tournament.id, 'seed-noop');
+
+      await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed: 3 })
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({})
+        .expect(200);
+
+      expect((response.body as TeamResponseBody).seed).toBe(3);
+    });
+
+    it('409 duplicate_seed: two teams cannot share a seed in the same tournament', async () => {
+      const club = await createClub('dup-seed');
+      await raiseQuota(club.clubId, 5);
+      const tournament = await createTournament(club.token, 'dup-seed');
+      const first = await createTeam(club.token, tournament.id, 'dup-seed-one');
+      const second = await createTeam(
+        club.token,
+        tournament.id,
+        'dup-seed-two',
+      );
+
+      await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${first.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed: 1 })
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${second.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed: 1 });
+
+      expect(response.status).toBe(409);
+      expect((response.body as ErrorBody).code).toBe('duplicate_seed');
+      expect((response.body as ErrorBody).details).toEqual({ seed: 1 });
+    });
+
+    // Varias duplas sin sembrar es el caso normal, no una excepción: los NULL
+    // no colisionan entre sí en el índice único.
+    it('200: any number of teams can stay unseeded at the same time', async () => {
+      const club = await createClub('many-null');
+      const tournament = await createTournament(club.token, 'many-null');
+      const first = await createTeam(
+        club.token,
+        tournament.id,
+        'many-null-one',
+      );
+      const second = await createTeam(
+        club.token,
+        tournament.id,
+        'many-null-two',
+      );
+
+      for (const team of [first, second]) {
+        await request(app.getHttpServer())
+          .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+          .set('Authorization', `Bearer ${club.token}`)
+          .send({ seed: null })
+          .expect(200);
+      }
+    });
+
+    // La etiqueta va aparte del número y sin dígitos a propósito: el fixture
+    // usa el nombre del caso como apellido del jugador, y `NAME_REGEX` no
+    // acepta números.
+    it.each([
+      [0, 'zero'],
+      [-1, 'negative'],
+      [1.5, 'fractional'],
+      [999, 'over-max'],
+    ])('400 validation: rejects a seed of %p (%s)', async (seed, label) => {
+      const club = await createClub(`bad-seed-${label}`);
+      const tournament = await createTournament(
+        club.token,
+        `bad-seed-${label}`,
+      );
+      const team = await createTeam(
+        club.token,
+        tournament.id,
+        `bad-seed-${label}`,
+      );
+
+      const response = await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed });
+
+      expect(response.status).toBe(400);
+      expect((response.body as ErrorBody).code).toBe('validation');
+    });
+
+    it('409 tournament_not_open: seeding stops once the tournament is no longer open', async () => {
+      const club = await createClub('seed-closed');
+      const tournament = await createTournament(club.token, 'seed-closed');
+      const team = await createTeam(club.token, tournament.id, 'seed-closed');
+
+      await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ status: 'canceled' })
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed: 1 });
+
+      expect(response.status).toBe(409);
+      expect((response.body as ErrorBody).code).toBe('tournament_not_open');
+    });
+
+    it('404 team_not_found: the team does not exist in that tournament', async () => {
+      const club = await createClub('seed-missing');
+      const tournament = await createTournament(club.token, 'seed-missing');
+
+      const response = await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${randomUUID()}`)
+        .set('Authorization', `Bearer ${club.token}`)
+        .send({ seed: 1 });
+
+      expect(response.status).toBe(404);
+      expect((response.body as ErrorBody).code).toBe('team_not_found');
+    });
+
+    it('404 tournament_not_found: another club cannot seed a team it does not own', async () => {
+      const clubA = await createClub('seed-tenancy-a');
+      const clubB = await createClub('seed-tenancy-b');
+      const tournament = await createTournament(clubA.token, 'seed-tenancy');
+      const team = await createTeam(clubA.token, tournament.id, 'seed-tenancy');
+
+      const response = await request(app.getHttpServer())
+        .patch(`/tournaments/${tournament.id}/teams/${team.id}`)
+        .set('Authorization', `Bearer ${clubB.token}`)
+        .send({ seed: 1 });
+
+      expect(response.status).toBe(404);
+      expect((response.body as ErrorBody).code).toBe('tournament_not_found');
     });
   });
 

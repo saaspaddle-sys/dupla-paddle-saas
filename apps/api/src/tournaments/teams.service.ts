@@ -6,9 +6,11 @@ import {
 import { runSerializable } from '../common/prisma/serializable';
 import { uniqueViolationMentions } from '../common/prisma/unique-violation';
 import { normalizeUuid } from '../common/transforms/normalize';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { TeamResponseDto } from './dto/team-response.dto';
+import { UpdateTeamDto } from './dto/update-team.dto';
 import { toTeamResponse } from './teams.mapper';
 import {
   requireTournamentInScope,
@@ -63,6 +65,16 @@ function teamNotFound(): NotFoundException {
   return new NotFoundException({
     code: 'team_not_found',
     message: 'the team does not exist in this tournament',
+  });
+}
+
+function duplicateSeed(seed: number): ConflictException {
+  return new ConflictException({
+    code: 'duplicate_seed',
+    message: 'another team in this tournament already has that seed',
+    // El número que chocó: el cliente ya lo mandó, pero devolverlo deja el
+    // error autocontenido para una UI que muestre varios a la vez.
+    details: { seed },
   });
 }
 
@@ -215,6 +227,75 @@ export class TeamsService {
   }
 
   /**
+   * Fija o limpia la cabeza de serie. Es lo **único** editable de una dupla:
+   * el par de jugadores no se corrige en el lugar, se borra la inscripción y
+   * se hace otra.
+   *
+   * Solo con el torneo `open`, y por el mismo motivo que el alta y la baja:
+   * con la llave ya sorteada, mover una cabeza no reordena el cuadro —el
+   * cuadro ya está en `matches`—, así que dejaría la siembra diciendo una
+   * cosa y el bracket otra.
+   *
+   * **Sin transacción `Serializable`, a diferencia del alta**, y la
+   * diferencia vale la pena entenderla: acá el invariante ("una cabeza por
+   * número, por torneo") es exactamente una fila repetida, así que el índice
+   * único `(tournament_id, seed)` lo sostiene solo. En el alta el invariante
+   * era "el mismo jugador en dos duplas distintas", que no produce ninguna
+   * fila repetida y por eso necesitaba el nivel de aislamiento.
+   */
+  async updateSeed(
+    clubId: string,
+    tournamentId: string,
+    teamId: string,
+    dto: UpdateTeamDto,
+  ): Promise<TeamResponseDto> {
+    const tournament = await requireTournamentInScope(
+      this.prisma,
+      clubId,
+      tournamentId,
+    );
+
+    if (tournament.status !== 'open') {
+      throw tournamentNotOpen();
+    }
+
+    // Body vacío: no-op que devuelve la representación actual. Se lee en vez
+    // de mandar un `update` con `data: {}` porque `updatedAt` es `@updatedAt`
+    // y ese update igual lo movería — un no-op que cambia una columna no es
+    // un no-op.
+    if (dto.seed === undefined) {
+      const team = await this.prisma.team.findFirst({
+        where: { id: teamId, tournamentId, clubId },
+        include: TEAM_PLAYERS_INCLUDE,
+      });
+
+      if (!team) {
+        throw teamNotFound();
+      }
+
+      return toTeamResponse(team);
+    }
+
+    try {
+      // El `where` va por `(id, tournament_id)` —el mismo unique compuesto que
+      // le sirve de blanco a las FKs de `matches`— y no incluye `club_id`. No
+      // hace falta: `requireTournamentInScope` ya probó que el torneo es de
+      // este club, y la FK compuesta de `teams` garantiza que toda dupla de
+      // ese torneo tiene su mismo `club_id`. Filtrar de nuevo no agregaría
+      // ninguna garantía.
+      const updated = await this.prisma.team.update({
+        where: { id_tournamentId: { id: teamId, tournamentId } },
+        data: { seed: dto.seed },
+        include: TEAM_PLAYERS_INCLUDE,
+      });
+
+      return toTeamResponse(updated);
+    } catch (error) {
+      throw this.toSeedFailure(error, dto.seed) ?? error;
+    }
+  }
+
+  /**
    * Borrado real y no un soft delete: una inscripción cancelada antes de que
    * arranque el torneo no tiene valor histórico —el torneo todavía no
    * existió— y una columna `deleted_at` obligaría a filtrarla en cada query
@@ -274,5 +355,41 @@ export class TeamsService {
     // Un índice que no reconocemos no se disfraza de 409: se deja subir como
     // 500, que es lo que realmente es.
     return undefined;
+  }
+
+  /**
+   * Los dos errores de Prisma que `updateSeed` sabe traducir:
+   *
+   * - **P2002** — el índice único `(tournament_id, seed)`: otra dupla ya tiene
+   *   ese número. Solo puede pasar con un `seed` no nulo; los `NULL` no
+   *   colisionan entre sí en Postgres, que es justo lo que permite tener
+   *   cualquier cantidad de duplas sin sembrar.
+   * - **P2025** — el `update` no encontró la fila. Acá significa una sola
+   *   cosa, porque el torneo ya se validó: esa dupla no está en este torneo.
+   *
+   * Cualquier otro error sube tal cual. Un 500 que se disfraza de 409 es peor
+   * que el 500.
+   */
+  private toSeedFailure(
+    error: unknown,
+    seed: number | null,
+  ): ConflictException | NotFoundException | undefined {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+      return undefined;
+    }
+
+    if (error.code === 'P2025') {
+      return teamNotFound();
+    }
+
+    // `seed === null` corta antes de mirar el índice: los NULL no colisionan
+    // entre sí, así que un P2002 con `seed` nulo no puede venir de acá.
+    if (seed === null) {
+      return undefined;
+    }
+
+    return uniqueViolationMentions(error, 'seed')
+      ? duplicateSeed(seed)
+      : undefined;
   }
 }

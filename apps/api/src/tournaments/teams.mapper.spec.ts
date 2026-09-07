@@ -11,6 +11,7 @@ function createTeam(overrides: Partial<TeamWithPlayers> = {}): TeamWithPlayers {
     tournamentId: 'tournament-1',
     player1Id: 'player-1',
     player2Id: 'player-2',
+    seed: null,
     createdAt: new Date('2026-08-24T12:00:00.000Z'),
     updatedAt: new Date('2026-08-24T12:00:00.000Z'),
     player1: {
@@ -48,8 +49,18 @@ describe('toTeamResponse', () => {
         lastName: 'Gómez',
         category: null,
       },
+      seed: null,
       createdAt: '2026-08-24T12:00:00.000Z',
     });
+  });
+
+  // `null` es el caso normal —la mayoría de las duplas entran al sorteo— así
+  // que el que hay que fijar aparte es el sembrado: un mapper que se olvide
+  // de copiar `seed` sigue pasando el test de arriba.
+  it('carries the seed number when the team is seeded', () => {
+    const response = toTeamResponse(createTeam({ seed: 3 }));
+
+    expect(response.seed).toBe(3);
   });
 
   // Ley 25.326, regla dura y sin excepciones: el dni de ningún jugador de la
