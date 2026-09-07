@@ -20,7 +20,7 @@ export default function PlayerDashboardPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 md:p-8 max-w-7xl ">
       {/* Saludo y Resumen Rápido */}
       <div className="bg-deep-onyx text-white p-6 rounded-3xl shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
