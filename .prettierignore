@@ -10,5 +10,9 @@ coverage/
 # Cliente de Prisma generado.
 apps/api/src/generated/
 
+# Documento OpenAPI generado — lo emite `pnpm --filter api run openapi`, y su
+# formato lo fija ese script. Si Prettier lo reformatea, el check de CI ve drift.
+apps/api/openapi.json
+
 # Generado por Next.
 next-env.d.ts

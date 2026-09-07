@@ -159,4 +159,4 @@ Es la única barrera que cubre a todo el equipo, independiente de qué editor o 
 
 ## Lo que todavía no está
 
-No hay seeds. El ERD de `data-model.md` está migrado solo en su primera tabla (`users`); el resto se migra tabla por tabla a medida que cada feature la necesita. No hay guard de tenancy todavía — se cablea junto con auth. No hay estrategia de hosting ni de backup definida para producción.
+No hay seeds. Las entidades implementadas se consultan en `apps/api/prisma/schema.prisma` y sus migraciones en `apps/api/prisma/migrations/`; el resto del ERD se migra a medida que cada feature lo necesita. El guard de tenancy `ClubScopeGuard` ya está cableado junto con `JwtAuthGuard` en los endpoints que requieren scope de club y resuelve el `club_id` desde el usuario autenticado. No hay estrategia de hosting ni de backup definida para producción.

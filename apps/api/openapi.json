@@ -1,0 +1,1608 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "Health_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "La base no responde (`database_unavailable`). El proceso está vivo — es exactamente el estado que un arranque limpio no distingue."
+          }
+        },
+        "summary": "Indica si la API puede alcanzar su base de datos",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "RegisterPlayer_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPlayerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterPlayerResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El email ya tiene cuenta (`email_registered`), o el DNI ya está asociado a una (`dni_has_account`)."
+          },
+          "429": {
+            "description": "Demasiados intentos (`too_many_requests`)."
+          }
+        },
+        "summary": "Registra un jugador y su cuenta, deduplicando por DNI",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "Auth_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Email o contraseña incorrectos (`invalid_credentials`). A propósito, el mismo error para ambos casos: no revela si el email existe."
+          },
+          "403": {
+            "description": "La cuenta está suspendida (`account_suspended`)."
+          },
+          "429": {
+            "description": "Demasiados intentos (`too_many_requests`)."
+          }
+        },
+        "summary": "Autentica con email y contraseña, y emite un access token",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "Auth_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Devuelve la identidad del usuario autenticado",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
+    "/clubs": {
+      "post": {
+        "operationId": "Clubs_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClubDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "409": {
+            "description": "La cuenta ya tiene un club (`club_limit_reached`), o el server no pudo derivar un slug libre desde el nombre (`slug_taken`)."
+          },
+          "429": {
+            "description": "Demasiados intentos (`too_many_requests`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Crea el club de la cuenta autenticada y su suscripción",
+        "tags": [
+          "club"
+        ]
+      }
+    },
+    "/clubs/me": {
+      "get": {
+        "operationId": "Clubs_findMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Devuelve el club de la cuenta autenticada con su suscripción",
+        "tags": [
+          "club"
+        ]
+      },
+      "patch": {
+        "operationId": "Clubs_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClubDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Actualiza los datos editables del club propio",
+        "tags": [
+          "club"
+        ]
+      }
+    },
+    "/tournaments": {
+      "post": {
+        "operationId": "Tournaments_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTournamentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TournamentResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "409": {
+            "description": "El club ya usa toda su cuota de torneos activos (`tournament_quota_reached`; `details` trae `max` y `current`)."
+          },
+          "429": {
+            "description": "Demasiados intentos (`too_many_requests`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Crea un torneo en el club de la cuenta",
+        "tags": [
+          "club"
+        ]
+      },
+      "get": {
+        "operationId": "Tournaments_list",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "`id` del último item de la página anterior — el `nextCursor` de la\nrespuesta, que el cliente devuelve tal cual sin interpretarlo.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filtra por estado. Sin este campo devuelve los cuatro estados.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "canceled",
+                "open",
+                "in_progress",
+                "finished"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Tamaño de página, entre 1 y 100. Default 20.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TournamentListResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Lista los torneos del club, del más nuevo al más viejo, paginados por cursor",
+        "tags": [
+          "club"
+        ]
+      }
+    },
+    "/tournaments/{tournamentId}": {
+      "get": {
+        "operationId": "Tournaments_findOne",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TournamentResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "404": {
+            "description": "El torneo no existe **o es de otro club** (`tournament_not_found`) — los dos casos son indistinguibles a propósito."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Devuelve un torneo del club",
+        "tags": [
+          "club"
+        ]
+      },
+      "patch": {
+        "operationId": "Tournaments_update",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTournamentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TournamentResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "404": {
+            "description": "El torneo no existe o es de otro club (`tournament_not_found`)."
+          },
+          "409": {
+            "description": "El cambio de estado pedido no está permitido (`invalid_status_transition`; `details` trae `from` y `to`). Este slice solo acepta `open -> canceled` e `in_progress -> canceled`."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Renombra el torneo y/o cambia su estado (en este slice, solo cancelarlo)",
+        "tags": [
+          "club"
+        ]
+      }
+    },
+    "/tournaments/{tournamentId}/teams": {
+      "post": {
+        "operationId": "Teams_create",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTeamDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body inválido (`validation`). Incluye el caso de mandar dos veces el mismo jugador."
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "404": {
+            "description": "El torneo no existe o es de otro club (`tournament_not_found`), o alguno de los jugadores no existe (`player_not_found`; `details.playerIds` dice cuál)."
+          },
+          "409": {
+            "description": "El torneo no está abierto (`tournament_not_open`), alguno de los jugadores ya juega en otra dupla del torneo (`player_already_registered`; `details.playerIds` dice cuál), o esta misma dupla ya está inscripta (`duplicate_team`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Inscribe una dupla en un torneo abierto",
+        "tags": [
+          "club"
+        ]
+      },
+      "get": {
+        "operationId": "Teams_list",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TeamResponseDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "404": {
+            "description": "El torneo no existe o es de otro club (`tournament_not_found`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Lista las duplas inscriptas en el torneo, en orden de inscripción. Sin paginación: la lista es acotada por naturaleza (una llave de eliminación directa) y el frontend la necesita entera para dibujar el bracket.",
+        "tags": [
+          "club"
+        ]
+      }
+    },
+    "/tournaments/{tournamentId}/teams/{teamId}": {
+      "patch": {
+        "operationId": "Teams_updateSeed",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "teamId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTeamDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body inválido (`validation`): `seed` no entero, menor a 1, o mayor al tamaño de cuadro más grande."
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "404": {
+            "description": "El torneo no existe o es de otro club (`tournament_not_found`), o la dupla no existe en ese torneo (`team_not_found`)."
+          },
+          "409": {
+            "description": "El torneo ya no está abierto (`tournament_not_open`), o ya hay otra dupla con ese número de cabeza en el torneo (`duplicate_seed`; `details.seed` dice cuál)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Siembra o desiembra una dupla en un torneo abierto. `seed: null` la devuelve al sorteo; un body vacío no cambia nada y devuelve la representación actual.",
+        "tags": [
+          "club"
+        ]
+      },
+      "delete": {
+        "operationId": "Teams_remove",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "teamId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "La dupla se borró. Sin cuerpo."
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "404": {
+            "description": "El torneo no existe o es de otro club (`tournament_not_found`), o la dupla no existe en ese torneo (`team_not_found`)."
+          },
+          "409": {
+            "description": "El torneo ya no está abierto (`tournament_not_open`): con la llave armada, una baja la invalidaría."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Da de baja una dupla de un torneo abierto (borrado real)",
+        "tags": [
+          "club"
+        ]
+      }
+    },
+    "/tournaments/{tournamentId}/bracket": {
+      "get": {
+        "operationId": "Bracket_findOne",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión válida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra un club (`club_required`)."
+          },
+          "404": {
+            "description": "Torneo inexistente o de otro club (`tournament_not_found`), o sin cuadro (`bracket_not_found`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Consulta el cuadro persistido del torneo.",
+        "tags": [
+          "club"
+        ]
+      },
+      "delete": {
+        "operationId": "Bracket_remove",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cuadro eliminado y torneo abierto."
+          },
+          "401": {
+            "description": "Sin sesión válida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra un club (`club_required`)."
+          },
+          "404": {
+            "description": "Torneo inexistente o de otro club (`tournament_not_found`), o sin cuadro (`bracket_not_found`)."
+          },
+          "409": {
+            "description": "El torneo no está en curso (`tournament_not_in_progress`) o el cuadro tiene resultados o sets cargados (`bracket_has_results`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Borra el cuadro sin resultados y reabre la inscripción. Los byes automáticos no impiden borrarlo.",
+        "tags": [
+          "club"
+        ]
+      },
+      "post": {
+        "operationId": "Bracket_generate",
+        "parameters": [
+          {
+            "name": "tournamentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "404": {
+            "description": "El torneo no existe o es de otro club (`tournament_not_found`)."
+          },
+          "409": {
+            "description": "El torneo ya tiene cuadro (`bracket_already_exists`), no está abierto (`tournament_not_open`), tiene muy pocas o demasiadas duplas (`not_enough_teams` / `too_many_teams`, con `details.teamCount`), o las cabezas de serie no son `1..k` sin huecos (`invalid_seeding`, con `details.seeds`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Sortea y genera el cuadro del torneo, y lo pasa a `in_progress`. Las duplas sembradas van a sus posiciones protegidas y el resto se sortea; los byes caen en las sembradas. Cierra la inscripción: a partir de acá no se pueden agregar ni sacar duplas.",
+        "tags": [
+          "club"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "dupla API",
+    "description": "API de dupla — SaaS de torneos de pádel para clubes.\n\nLos endpoints se agrupan por las tres clases de `docs/api-conventions.md`:\n`club` (JWT de staff, scoping por el club del usuario autenticado), `public`\n(vista gratuita para jugadores, solo lectura y sin auth) y `platform`\n(entidades globales como `Player`, sin `club_id`).",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "club",
+      "description": "Panel del club. Requiere JWT de staff; el scoping sale del `club_id` del usuario autenticado, nunca del request."
+    },
+    {
+      "name": "public",
+      "description": "Vista pública para jugadores. Solo lectura, sin auth."
+    },
+    {
+      "name": "platform",
+      "description": "Entidades globales de plataforma (`Player`), sin `club_id`."
+    },
+    {
+      "name": "ops",
+      "description": "Operacionales, para la infraestructura (health checks). Sin auth y sin datos de negocio."
+    }
+  ],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "jwt": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "Access token emitido por la API (Passport + JWT)."
+      }
+    },
+    "schemas": {
+      "HealthResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Siempre `ok` — un chequeo que falla no devuelve este DTO, devuelve 503."
+          },
+          "database": {
+            "type": "string",
+            "description": "Resultado del `SELECT 1` contra Postgres."
+          }
+        },
+        "required": [
+          "status",
+          "database"
+        ]
+      },
+      "RegisterPlayerDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 72
+          },
+          "dni": {
+            "type": "string",
+            "pattern": "^\\d{7,8}$"
+          },
+          "firstName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ]
+          },
+          "birthDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "dominantHand": {
+            "type": "string",
+            "enum": [
+              "right",
+              "left"
+            ]
+          },
+          "country": {
+            "type": "string"
+          },
+          "province": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "phone": {
+            "type": "string"
+          },
+          "emergencyPhone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "dni",
+          "firstName",
+          "lastName"
+        ]
+      },
+      "RegisteredAccountDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ]
+      },
+      "RegisteredPlayerDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "gender": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "male",
+              "female"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "category",
+          "gender",
+          "createdAt"
+        ]
+      },
+      "RegisterPlayerResponseDto": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "claimed"
+            ]
+          },
+          "user": {
+            "$ref": "#/components/schemas/RegisteredAccountDto"
+          },
+          "player": {
+            "$ref": "#/components/schemas/RegisteredPlayerDto"
+          }
+        },
+        "required": [
+          "outcome",
+          "user",
+          "player"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 72
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "LoginResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "tokenType": {
+            "type": "string"
+          },
+          "expiresIn": {
+            "type": "number",
+            "description": "Segundos hasta que el token vence — el BFF lo usa como `maxAge` de la cookie."
+          }
+        },
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresIn"
+        ]
+      },
+      "CurrentUserPlayerDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "gender": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "male",
+              "female"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "category",
+          "gender"
+        ]
+      },
+      "CurrentUserClubDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "status"
+        ]
+      },
+      "CurrentUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "player": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrentUserPlayerDto"
+              }
+            ]
+          },
+          "club": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrentUserClubDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "player",
+          "club"
+        ]
+      },
+      "CreateClubDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "\\p{L}"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "ClubSubscriptionDto": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "type": "string",
+            "description": "Toda suscripción nace en `basic`; el cambio de plan es manual.",
+            "enum": [
+              "free",
+              "basic",
+              "pro"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "Arranca en `pending`: el cobro es manual y se activa a mano.",
+            "enum": [
+              "active",
+              "pending",
+              "canceled"
+            ]
+          },
+          "maxTournaments": {
+            "type": "number",
+            "description": "Cuota del plan: 3 en `basic`, 12 en `pro`. Cuenta llaves **activas\nsimultáneas**, no acumuladas ni por período. La consume el slice de\ntorneos; este slice solo la guarda."
+          }
+        },
+        "required": [
+          "plan",
+          "status",
+          "maxTournaments"
+        ]
+      },
+      "ClubResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Es el `club_id`, pero el cliente nunca lo manda de vuelta."
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601."
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "ISO 8601."
+          },
+          "subscription": {
+            "description": "**No** es nullable: todo club nace con su suscripción en la misma\ntransacción. Ver `ClubsService` para qué pasa si esa invariante se\nrompe (spoiler: 500, no `subscription: null`).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubSubscriptionDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "subscription"
+        ]
+      },
+      "UpdateClubDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "\\p{L}"
+          }
+        }
+      },
+      "CreateTournamentDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "\\p{L}"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "TournamentResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Es el `tournamentId` de las rutas anidadas."
+          },
+          "name": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "canceled",
+              "open",
+              "in_progress",
+              "finished"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601."
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "ISO 8601."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "format",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "TournamentListResponseDto": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "`id` del último item de esta página, para pedir la siguiente como\n`?cursor=<nextCursor>`. `null` cuando no hay más — es el fin de la\nlista, no un error.",
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TournamentResponseDto"
+            }
+          }
+        },
+        "required": [
+          "nextCursor",
+          "items"
+        ]
+      },
+      "UpdateTournamentDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80,
+            "pattern": "\\p{L}"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "canceled",
+              "open",
+              "in_progress",
+              "finished"
+            ]
+          }
+        }
+      },
+      "CreateTeamDto": {
+        "type": "object",
+        "properties": {
+          "player1Id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "player2Id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "player1Id",
+          "player2Id"
+        ]
+      },
+      "PlayerSummaryDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "nullable": true,
+            "description": "Texto libre por ahora; `null` si el perfil no la tiene cargada."
+          },
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "id",
+          "firstName",
+          "lastName"
+        ]
+      },
+      "TeamResponseDto": {
+        "type": "object",
+        "properties": {
+          "tournamentId": {
+            "type": "string",
+            "description": "Redundante con el path, pero deja el objeto autocontenido en una lista.",
+            "format": "uuid"
+          },
+          "seed": {
+            "type": "number",
+            "nullable": true,
+            "description": "Cabeza de serie, o `null` si la dupla entra al sorteo. Lo fija el club\ncon `PATCH /tournaments/:tournamentId/teams/:teamId` mientras el torneo\nestá `open`; lo normal es que la mayoría sean `null`."
+          },
+          "id": {
+            "type": "string"
+          },
+          "player1": {
+            "$ref": "#/components/schemas/PlayerSummaryDto"
+          },
+          "player2": {
+            "$ref": "#/components/schemas/PlayerSummaryDto"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601. Es el orden de inscripción."
+          }
+        },
+        "required": [
+          "tournamentId",
+          "seed",
+          "id",
+          "player1",
+          "player2",
+          "createdAt"
+        ]
+      },
+      "UpdateTeamDto": {
+        "type": "object",
+        "properties": {
+          "seed": {
+            "type": "number",
+            "nullable": true,
+            "description": "Número de cabeza de serie. `null` desiembra la dupla; omitirlo no cambia nada.",
+            "minimum": 1,
+            "maximum": 128
+          }
+        }
+      },
+      "BracketTeamDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seed": {
+            "type": "number",
+            "nullable": true
+          },
+          "player1": {
+            "$ref": "#/components/schemas/PlayerSummaryDto"
+          },
+          "player2": {
+            "$ref": "#/components/schemas/PlayerSummaryDto"
+          }
+        },
+        "required": [
+          "id",
+          "seed",
+          "player1",
+          "player2"
+        ]
+      },
+      "BracketMatchDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "teamA": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BracketTeamDto"
+              }
+            ]
+          },
+          "teamB": {
+            "nullable": true,
+            "description": "`null` en un bye: el lado que falta es siempre el B.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BracketTeamDto"
+              }
+            ]
+          },
+          "winnerTeamId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "finished"
+            ],
+            "type": "string"
+          },
+          "outcome": {
+            "nullable": true,
+            "description": "`bye` lo escribe solo el generador. Un partido `pending` no tiene\noutcome.",
+            "enum": [
+              "normal",
+              "walkover",
+              "retirement",
+              "bye"
+            ],
+            "type": "string"
+          },
+          "nextMatchId": {
+            "type": "string",
+            "nullable": true,
+            "description": "A qué partido avanza el ganador, y a qué lado. Los dos `null` **solo en\nla final** — pero no derives \"esto es la final\" de eso: ver la entrada\ndel 2026-09-05 en `docs/decisions.md`.",
+            "format": "uuid"
+          },
+          "nextSlot": {
+            "nullable": true,
+            "enum": [
+              "a",
+              "b"
+            ],
+            "type": "string"
+          },
+          "round": {
+            "type": "number",
+            "description": "1 es la primera ronda que se juega, no la final."
+          },
+          "position": {
+            "type": "number",
+            "description": "0-based dentro de la ronda, de arriba hacia abajo."
+          }
+        },
+        "required": [
+          "id",
+          "teamA",
+          "teamB",
+          "winnerTeamId",
+          "status",
+          "outcome",
+          "nextMatchId",
+          "nextSlot",
+          "round",
+          "position"
+        ]
+      },
+      "BracketResponseDto": {
+        "type": "object",
+        "properties": {
+          "tournamentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BracketMatchDto"
+            }
+          },
+          "bracketSize": {
+            "type": "number",
+            "description": "Potencia de 2 inmediatamente mayor o igual a la cantidad de duplas."
+          },
+          "roundCount": {
+            "type": "number"
+          },
+          "byeCount": {
+            "type": "number",
+            "description": "Lugares vacíos del cuadro. Caen siempre en duplas sembradas."
+          }
+        },
+        "required": [
+          "tournamentId",
+          "matches",
+          "bracketSize",
+          "roundCount",
+          "byeCount"
+        ]
+      }
+    }
+  }
+}

@@ -2,6 +2,119 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-07 — Consultar y borrar el cuadro sin perder resultados
+
+`GET /tournaments/:tournamentId/bracket` devuelve el mismo DTO que el POST, leído del cuadro persistido y ordenado por ronda y posición. No vuelve a sortear. La lectura del scope y los partidos comparte una transacción `RepeatableRead`; un borrado concurrente no mezcla dos snapshots. Un torneo ajeno o inexistente devuelve `404 tournament_not_found`; uno propio sin cuadro devuelve `404 bracket_not_found`.
+
+`DELETE` devuelve `204` y reabre la inscripción (`in_progress → open`) en la misma transacción `Serializable` que elimina los partidos. Solo permite torneos en curso: un cuadro de un torneo cancelado o terminado devuelve `409 tournament_not_in_progress`, sin reabrirlo. Un segundo borrado devuelve `404 bracket_not_found`.
+
+La condición de borrado distingue resultados de byes: `normal`, `walkover`, `retirement` o cualquier set cargado producen `409 bracket_has_results`. Los byes automáticos no lo impiden, aunque su estado sea `finished`. El compare-and-swap toma el estado antes de leer resultados y se revierte si aparece un impedimento. El árbol se elimina con un solo `deleteMany` por torneo y club, como requiere su FK `NoAction`. El futuro handler de resultados debe participar también en transacciones serializables para mantener esa garantía frente a un borrado concurrente.
+
+Ambas rutas son clase `club`, con JWT y `ClubScopeGuard`; no agregan una ruta pública. Regenerar después de borrar produce nuevos ids y un sorteo nuevo, sin prometer que la disposición necesariamente sea distinta.
+
+## 2026-09-07 — El documento OpenAPI se commitea, y CI falla si quedó desincronizado
+
+**Contexto**: la convención ya decía que "lo que el frontend consume es `/docs`". El problema es que `/docs` solo existe con la API corriendo: para responder "qué endpoint llamo y qué me devuelve", quien trabaja en `apps/web` tenía que clonar `apps/api`, levantar Postgres, aplicar migraciones y bootear Nest. Preguntarle al backend sale más barato que eso, así que es lo que pasaba. El contrato estaba documentado y era, en la práctica, inaccesible para su único consumidor.
+
+**Decisión**: el documento se emite a `apps/api/openapi.json` y se commitea. `pnpm --filter api run openapi` lo regenera; `openapi:check` compara y falla si difiere, y CI lo corre después del build.
+
+**Tres cosas que condicionaron la implementación**:
+
+**1. Corre sobre `dist/`, no sobre las fuentes.** El plugin de `@nestjs/swagger` de `nest-cli.json` es un transformer de compilación: es el que infiere tipos y descripciones de los DTOs. Generar el documento con ts-node saltea el plugin y emite los 25 schemas sin una sola propiedad — un archivo que parece válido y no sirve para nada. Por eso los scripts son `nest build && node dist/swagger/generate-openapi.js`, y por eso el generador vive en `src/swagger/` y no en un `scripts/` en la raíz del paquete: `tsconfig.build.json` ya documenta que un archivo fuera de `src/` corre el `rootDir` inferido un nivel para arriba y desplaza todo el output.
+
+**2. `preview: true` para no necesitar la base.** `PrismaService` pide `DATABASE_URL` en el constructor y abre conexión en `onModuleInit`. Con `NestFactory.create(AppModule, { preview: true })` Nest arma el grafo de módulos y registra los controllers, pero no instancia providers ni corre hooks de ciclo de vida — que es exactamente lo que hace falta, porque Swagger lee metadata de las clases vía Reflect, no de las instancias. Sin esto, generar un contrato HTTP dependería de tener Postgres levantado, que es el mismo problema que la decisión venía a resolver.
+
+**3. El archivo va a `.prettierignore`.** Prettier colapsa los arrays cortos en una línea y `JSON.stringify` no. Con los dos formateando el mismo archivo, cada `format --write` lo dejaría en un estado que `openapi:check` lee como drift. El formato lo fija el generador, que es la única autoridad sobre ese archivo.
+
+**Lo que esto habilita**: los `code` de error dejan de estar solo en los decoradores y desperdigados en este archivo — quedan los 11 en un artefacto legible desde el repo. Y un cambio de contrato aparece en el diff del PR de la API, así que se ve al revisar y no en runtime del otro lado. Se descartó publicar el `.json` como release o exponerlo en un endpoint estático: las dos opciones lo sacan del diff, que es la mitad del valor.
+
+## 2026-09-07 — Generar el cuadro: cerrar la inscripción primero, y escribir el árbol de la final hacia atrás
+
+**Contexto**: `POST /tournaments/:id/bracket` sortea la llave, la persiste entera y arranca el torneo. Tres problemas que no son obvios hasta que se escribe.
+
+**1. El árbol se escribe de la final hacia la primera ronda, una ronda por query.** No es una optimización: `next_match_id` es una FK contra `matches`, así que el partido destino tiene que existir cuando se inserta el que lo apunta. Yendo al revés —de la primera ronda hacia adelante, que es como se lee un cuadro— cada puntero apuntaría a algo que todavía no existe. Se usa `createManyAndReturn` y no `createMany` porque hacen falta los ids recién generados para armar los punteros de la ronda siguiente; con `createMany` habría que pedirlos con un `findMany` más por ronda.
+
+Se descartó insertar todo en una sola query confiando en que Postgres difiere el chequeo de FK al final de la sentencia. Es cierto —los triggers de una FK no diferible corren al terminar el statement, no fila por fila— pero es una sutileza del motor que nadie que lea el código va a tener presente, y el día que alguien parta el insert en dos se rompe sin que ningún test lo explique. El orden explícito se sostiene solo, y tiene un test que lo fija.
+
+**2. El torneo se cierra antes de leer los inscriptos, no después.** Mientras el torneo siga `open`, `TeamsService` acepta inscripciones. Leer las duplas y después cerrar deja una ventana en la que una inscripción que la API ya aceptó queda afuera de un cuadro que ya se generó — y como el cuadro es el único registro del sorteo, esa dupla no aparece en ningún lado.
+
+El cierre es un **compare-and-swap**: `updateMany` con `where: { status: 'open' }`. Si actualiza cero filas, otro request ganó la carrera y la respuesta es `409 bracket_already_exists`. Es lo que ya anticipaba el comentario de `TournamentsService.update` ("cuando existan `in_progress` y `finished` como transiciones reales, esto pasa a ser un `updateMany` condicionado por el estado leído").
+
+**3. Corre en `Serializable`, igual que el alta de duplas, y tiene que ser el mismo nivel.** El aislamiento serializable de Postgres (SSI) solo garantiza serializabilidad **entre transacciones serializables**: si esta corriera en Read Committed, Postgres no tendría cómo detectar el conflicto entre "inscribo una dupla" y "congelo la lista de inscriptos", y el CAS no alcanzaría porque la otra transacción ya tomó su snapshot. Una transacción más débil al lado de una serializable no es "un poco menos segura": deja de haber garantía.
+
+**Otras dos cosas que quedaron decididas acá**:
+
+- **`open → in_progress` no es una transición que el cliente pueda pedir.** No entra en `ALLOWED_STATUS_TRANSITIONS`, así que un `PATCH /tournaments/:id` con `status: 'in_progress'` sigue devolviendo `409 invalid_status_transition`. El estado es una consecuencia de generar el cuadro, no algo que se setee por separado — poder hacerlo a mano permitiría un torneo `in_progress` sin llave.
+- **`bracket_already_exists` y no `tournament_not_open`** cuando el torneo ya arrancó. Es el error que de verdad va a pasar (el club aprieta "generar" dos veces) y merece decir eso, no "el torneo no está abierto para inscripciones", que manda a buscar un problema que no existe.
+
+El shape de la respuesta (`BracketResponseDto`) se diseñó pensando en que lo van a reusar el `GET` y después la vista pública: no sale `clubId` de ningún nivel, y las duplas van con `PlayerSummaryDto`, que ya tiene la garantía de no exponer `dni`.
+
+## 2026-09-06 — Un P2002 de Prisma 7 no trae `meta.target`, y eso dejó tres mapeos a 409 sin efecto
+
+**Contexto**: al implementar `PATCH /tournaments/:id/teams/:teamId`, el test e2e del `duplicate_seed` devolvió **500 en vez de 409**. El código mapeaba la violación del índice único leyendo `error.meta.target`, que es la forma clásica del motor de Rust.
+
+**Hallazgo**: Prisma 7 no tiene motor de Rust. Con el driver adapter (`@prisma/adapter-pg`, obligatorio desde la entrada "Prisma 7: setup real") un P2002 llega **sin `target` por ningún lado**:
+
+```
+meta: {
+  modelName: 'Team',
+  driverAdapterError: {
+    name: 'DriverAdapterError',
+    cause: {
+      originalCode: '23505',
+      originalMessage: 'duplicate key value violates unique constraint "teams_tournament_id_seed_key"',
+      kind: 'UniqueConstraintViolation',
+      constraint: { fields: ['tournament_id', 'seed'] },
+    },
+  },
+}
+```
+
+Las columnas viajan en `cause.constraint.fields` (snake_case), o el nombre del índice en `cause.constraint.index` cuando el adapter no las pudo resolver.
+
+**Por qué no se había notado**: los tres services que mapean P2002 (`PlayersService`, `ClubsService`, `TeamsService`) lo usan como **fallback de carrera**, no como camino normal — un `SELECT` previo da el 409 en el caso común. El fallback solo corre cuando dos requests simultáneos ganan la carrera, que es justo lo que ningún test determinista ejercita. Los tests unitarios tampoco lo agarraban: **mockeaban el error con `meta.target`**, o sea con una forma que en producción no existe. Un mock puede confirmar una suposición equivocada indefinidamente.
+
+**Decisión**: la lectura del índice se centraliza en `common/prisma/unique-violation.ts` (`uniqueViolationTargets` / `uniqueViolationMentions`), que mira las tres formas —`meta.target`, `constraint.fields` y `constraint.index`— y devuelve todo en minúscula. Los tests de ese helper usan la forma real capturada contra Postgres, no una inventada.
+
+**Estado**: los tres services usan el helper (`TeamsService` con `duplicate_team` y `duplicate_seed`, `PlayersService` con `dni_has_account` y `email_registered`, `ClubsService` con `slug_taken` y `club_limit_reached`), y los tres `constraintTarget` privados duplicados dejaron de existir.
+
+Un detalle del de `ClubsService`: el índice `subscriptions_user_id_key` se busca con **dos** fragmentos, `user_id` y `userid`. Son el mismo campo escrito de las dos formas en que puede llegar —la columna, que es lo que reporta el adapter, y `userId` en minúscula, que es lo que llegaría por `meta.target`—, y con uno solo la mitad de las formas caería al 500 igual que antes.
+
+**Regla que queda**: cuando un mock construye un error de una librería, la forma del mock se verifica contra la real al menos una vez. Si no, lo único que se prueba es que el código coincide con lo que creíamos.
+
+Los tests de los tres services ahora tienen las dos formas: la clásica y la del adapter. Se comprobó que los cinco casos de la forma real **fallan** si se rompe el helper a propósito, que es la única manera de saber que un test de regresión regresiona algo.
+
+## 2026-09-05 — Slice 4: el sistema sortea la llave respetando cabezas de serie, y los byes van a las sembradas
+
+**Contexto**: el slice 4 genera la llave. Había que decidir en qué orden entran las duplas al cuadro, y qué pasa cuando la cantidad no es potencia de 2 —que es casi siempre— y sobran lugares.
+
+**Decisión**:
+
+- **El sorteo lo hace el sistema, con cabezas de serie.** `teams.seed` es un `Int?` nullable con `UNIQUE (tournament_id, seed)`: las duplas sembradas van a las posiciones protegidas del cuadro y **el resto se sortea** entre los lugares que quedan. Es el híbrido de los torneos reales. Se descartó el orden de inscripción, que le regalaría el cuadro fácil al que se anotó primero, y se descartó el azar puro, que puede cruzar a las dos mejores en primera ronda y arruinar el torneo antes de empezar.
+- **`seed` es editable y no un dato de alta** (`PATCH /tournaments/:id/teams/:teamId`, solo con el torneo `open`): el club decide las cabezas cuando cierra la inscripción y ya sabe quién se anotó. Los `NULL` no colisionan entre sí en el índice único, así que cualquier cantidad de duplas sin sembrar convive.
+- **Las cabezas tienen que ser `1..k` sin huecos** al generar, o `409 invalid_seeding`. Con seeds 1, 2 y 7 la posición 3 del cuadro quedaría vacía mientras existe una cabeza 7: es un error del club, no un cuadro que la API deba inventar.
+- **Los byes van a las sembradas**, y no hace falta código que los reparta: sale de la secuencia de siembra. Los lugares vacíos son los números de entrada más altos, y cada uno se empareja con el más bajo disponible, así que caen enfrente de las mejores cabezas. Es además la regla real de un torneo, donde el bye es el premio a la siembra.
+
+**Se evaluó y se descartó sortear los byes entre todas.** Suena más justo y es peor: una dupla débil se lleva el pase gratis y las dos mejores pueden cruzarse en primera ronda, que es exactamente lo que la siembra existe para evitar. El bye es inevitable —en eliminación directa el cuadro es potencia de 2 y alguien se saltea la primera ronda—, así que la única pregunta posible es quién, y de los criterios disponibles el sembrado es el menos arbitrario.
+
+**Consecuencias**: con sorteo, borrar y volver a generar da **un cuadro distinto**. Eso es correcto (un resorteo es un sorteo nuevo) pero implica que **el bracket generado es el único registro del sorteo**: no se puede reconstruir, así que borrarlo destruye información irrecuperable. Por eso `DELETE /bracket` exige que no haya ni un resultado cargado.
+
+También cambia cómo se testea el generador: ya no vale "mismo input, mismo output". El barajado entra **inyectado**, los tests usan uno determinista, y lo que se fija son los invariantes que valen siempre — `S−1` partidos, las cabezas en sus posiciones protegidas, ningún bye contra otro bye, y ningún bye en el lado A.
+
+Queda anotado que **la siembra hoy la decide el club a dedo**: no hay ranking, y `players.category` no ordena nada. La mitigación no es cambiar el algoritmo sino que se vea — el cuadro guarda `outcome: 'bye'` y el número de siembra, así que la vista pública puede mostrar quién se salteó la primera ronda y por qué.
+
+## 2026-09-05 — "Esto es la final" no se deriva de que el puntero de avance sea nulo
+
+**Contexto**: al diseñar la carga de resultados, la regla natural es "si el partido no tiene `next_match_id`, es la final, así que cerrá el torneo". Es cierta hoy y sería una trampa mañana.
+
+**Decisión**: la condición se escribe **explícita** desde el primer día, no derivada del puntero nulo.
+
+**Por qué**: el enum `TournamentFormat` existe para admitir formatos nuevos, y el más probable es zonas + llave (muy común en el pádel amateur argentino, y la respuesta natural a "¿por qué el sembrado juega menos partidos?"). Un partido de zona **también** tiene el puntero nulo —no avanza a ningún partido, alimenta una tabla de posiciones—, así que la regla del puntero marcaría un torneo como terminado al cargar el resultado de un partido de grupo. El modo de falla es silencioso y con datos reales adentro.
+
+Cuando exista ese formato se agrega una columna `phase` (`group`/`knockout`), que es aditiva, y la condición pasa a ser "sin puntero **y** de fase knockout".
+
+**Consecuencias**: sirve además como evaluación de cuánto costaría el formato de zonas, que es más aditivo de lo que parece. Se reusan enteros `matches`, `match_sets`, la carga de resultados con su validador de scores de pádel, y todo el patrón de tenancy. Lo genuinamente nuevo son tres cosas: la tabla de posiciones con sus desempates (que se resuelven **solo entre los empatados**, no contra todo el torneo), el algoritmo de cruce de clasificados —el primero de una zona no puede cruzarse con el segundo de la misma en la primera ronda—, y el sorteo de zonas con las cabezas repartidas una por grupo. Además se rompen dos invariantes de hoy: `in_progress ⟺ existe el bracket` (con zonas la llave se genera en el medio del torneo) y `(round, position)` como coordenadas de un árbol.
+
 ## 2026-09-03 — Fase 3: degradación hacia adelante, cuota simultánea con cobro mensual, y `payment_events` para la idempotencia del webhook
 
 **Contexto**: con el plan `free` explícito (entrada de abajo), el upgrade a plan pago pasó de idea vaga a siguiente paso del modelo de negocio, y entró al alcance como fase 3 en `docs/product-brief.md`. Quedaban tres preguntas que había que cerrar **antes** de escribir el webhook, no después. Se cierran acá.

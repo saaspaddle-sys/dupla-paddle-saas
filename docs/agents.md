@@ -70,7 +70,7 @@ Delegar no transfiere la responsabilidad. Antes de commitear lo que produjo un a
 - **Si el diff toca `apps/api/prisma/`, corré `pnpm run db:verify`** (necesita `pnpm run db:up`). Un schema editado sin su migración compila y pasa los tests; se cae en el deploy.
 - **Leé el diff completo.** Si no podés explicar una línea en el review, no está lista para mergear.
 - **Chequeá el invariante de tenancy a mano** en cualquier endpoint del club. Es la clase de bug más cara del producto y la que peor se detecta leyendo por arriba.
-- **Desconfiá de lo que asume infraestructura que no existe.** Hoy `apps/api` tiene Prisma con una sola entidad (`User`) y nada más: no hay auth, ni `ValidationPipe` global, ni exception filter. Un agente puede escribir DTOs con decoradores de `class-validator` que no validan nada porque falta la dependencia y el pipe. Si una feature es la primera que necesita una pieza de infraestructura, esa pieza es parte de la feature.
+- **Verificá la infraestructura antes de asumir que existe.** `apps/api` ya tiene auth con Passport + JWT, tenancy con `ClubScopeGuard`, y `ValidationPipe` y `AppExceptionFilter` globales registrados en `AppModule`. Consultá `apps/api/prisma/schema.prisma` para las entidades implementadas. Si una feature es la primera que necesita otra pieza de infraestructura, esa pieza es parte de la feature.
 
 ## Antipatrones
 

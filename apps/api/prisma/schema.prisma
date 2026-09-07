@@ -103,6 +103,8 @@ model Club {
 
   tournaments Tournament[]
   teams       Team[]
+  matches     Match[]
+  matchSets   MatchSet[]
 
   // Sin `@unique`: el schema soporta varios clubes por dueño y el cupo se
   // capea en la app. Hoy ese cupo es 1 y lo enforcea de rebote el índice
@@ -252,8 +254,9 @@ model Tournament {
 
   // `Restrict` por la misma razón que `clubs.owner_id`: borrar un club no
   // puede evaporar torneos jugados.
-  club  Club   @relation(fields: [clubId], references: [id], onDelete: Restrict)
-  teams Team[]
+  club    Club    @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  teams   Team[]
+  matches Match[]
 
   // Compuesto y no `[clubId]` solo: la query de cuota filtra por club *y*
   // status, y es la que corre en cada POST.
@@ -296,8 +299,21 @@ model Team {
   tournamentId String   @map("tournament_id") @db.Uuid
   player1Id    String   @map("player1_id") @db.Uuid
   player2Id    String   @map("player2_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // Cabeza de serie. `NULL` es lo normal: significa "no sembrada, entra al
+  // sorteo". Las sembradas van a posiciones protegidas del cuadro y el resto
+  // se sortea entre los lugares que quedan, que es como se arma un torneo de
+  // verdad. El club las fija cuando cierra la inscripción y ya sabe quién se
+  // anotó, no al inscribir — por eso es una columna editable y no un dato de
+  // alta.
+  //
+  // El unique de abajo impide dos "seed 1" en el mismo torneo. Los `NULL` no
+  // colisionan entre sí en Postgres, así que cualquier cantidad de duplas sin
+  // sembrar convive sin problema.
+  seed Int?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Restrict)
 
@@ -310,9 +326,19 @@ model Team {
   player1 Player @relation("TeamPlayer1", fields: [player1Id], references: [id], onDelete: Restrict)
   player2 Player @relation("TeamPlayer2", fields: [player2Id], references: [id], onDelete: Restrict)
 
+  matchesAsTeamA  Match[] @relation("MatchTeamA")
+  matchesAsTeamB  Match[] @relation("MatchTeamB")
+  matchesAsWinner Match[] @relation("MatchWinner")
+
   // Con el orden canónico (ver el CHECK de la migración), esto sí impide que
   // la misma dupla entre dos veces: sin él, (A,B) y (B,A) son dos filas.
   @@unique([tournamentId, player1Id, player2Id])
+  // Una cabeza de serie por número, por torneo.
+  @@unique([tournamentId, seed])
+  // Blanco de las FKs compuestas de `Match`. Es el mismo truco que
+  // `Tournament.@@unique([id, clubId])`: redundante como unicidad, obligatorio
+  // como destino de una FK que valida dos columnas a la vez.
+  @@unique([id, tournamentId])
   // Sin `@@index([tournamentId])`: el unique de arriba ya lo cubre como
   // prefijo izquierdo. Un segundo índice sobre la misma columna no acelera
   // ninguna query y cuesta en cada escritura.
@@ -320,4 +346,180 @@ model Team {
   @@index([player1Id])
   @@index([player2Id])
   @@map("teams")
+}
+
+/// Ciclo de vida del partido, binario a propósito: "listo para jugar" no es un
+/// estado guardado sino una derivación (`pending` con las dos duplas
+/// presentes). Un tercer valor que hay que mantener sincronizado con dos
+/// columnas es un valor que se va a desincronizar.
+enum MatchStatus {
+  pending
+  finished
+
+  @@map("match_status")
+}
+
+/// Cómo terminó el partido; `null` mientras está `pending`. No existe
+/// `no_show`: un no-show **es** un walkover — mismos datos (cero sets, un
+/// ganador declarado) y mismas reglas, así que distinguirlos solo agrega un
+/// valor que el frontend tiene que mapear. `bye` lo escribe únicamente el
+/// generador: el DTO de entrada no lo acepta.
+enum MatchOutcome {
+  normal
+  walkover
+  retirement
+  bye
+
+  @@map("match_outcome")
+}
+
+/// A qué lado del partido siguiente entra el ganador. Ver `Match.nextSlot`.
+enum MatchSlot {
+  a
+  b
+
+  @@map("match_slot")
+}
+
+/// Un super tiebreak no es un set de games: es una carrera a 10 puntos que en
+/// muchos torneos amateur reemplaza al tercer set. Con `kind`, el score vive
+/// donde corresponde —games en NULL, marcador en las columnas de tiebreak— en
+/// vez de mentir un "10-8 en games", que en pádel no existe.
+enum MatchSetKind {
+  standard
+  super_tiebreak
+
+  @@map("match_set_kind")
+}
+
+/// Partido de la llave. El bracket se materializa **entero** al generar:
+/// `S - 1` filas, con las rondas futuras creadas vacías y ya enlazadas. Es lo
+/// que implica `next_match_id` (un puntero necesita que el destino exista) y
+/// lo que le permite a la vista pública dibujar el cuadro completo desde el
+/// minuto cero.
+model Match {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  // Copia denormalizada de `tournaments.club_id`, igual que en `Team` y por lo
+  // mismo: el guard filtra con la misma forma en toda tabla de club. La FK
+  // compuesta de abajo es lo que impide que la copia mienta.
+  clubId       String @map("club_id") @db.Uuid
+  tournamentId String @map("tournament_id") @db.Uuid
+
+  // Coordenadas en el árbol. `round` cuenta hacia adelante desde 1 (la primera
+  // ronda que se juega, no la final): es como se lee un cuadro impreso.
+  // `position` es 0-based, de arriba hacia abajo.
+  round    Int
+  position Int
+
+  // Los tres nullable, cada uno por un motivo distinto:
+  // - `team_b_id` porque un bye no tiene rival, y el lado que falta siempre es
+  //   el B (la secuencia de siembra pone la mejor semilla en A).
+  // - `team_a_id` porque las rondas 2+ nacen vacías esperando ganadores.
+  // - `winner_team_id` porque el partido nace sin jugar.
+  teamAId      String? @map("team_a_id") @db.Uuid
+  teamBId      String? @map("team_b_id") @db.Uuid
+  winnerTeamId String? @map("winner_team_id") @db.Uuid
+
+  status  MatchStatus   @default(pending)
+  outcome MatchOutcome?
+
+  // El avance del bracket. `next_slot` es la mitad que le faltaba al ERD: sin
+  // él, propagar un ganador es "escribí en el slot que esté libre", que es no
+  // determinista cuando los dos están libres y una carrera cuando los dos
+  // alimentadores terminan a la vez — los dos leerían "A está libre". Con
+  // `next_slot`, cada alimentador escribe su propia columna, prefijada al
+  // generar. Los dos son `null` solo en la final.
+  //
+  // OJO al escribir el handler de resultados: **no derives "esto es la final"
+  // de que el puntero sea nulo**. Hoy es cierto porque todo partido es de
+  // llave, pero el día que exista el formato de zonas los partidos de grupo
+  // también van a tener el puntero nulo —no avanzan a ningún partido,
+  // alimentan una tabla de posiciones— y la regla "sin puntero, cerrá el
+  // torneo" marcaría un torneo como terminado al cargar un resultado de zona.
+  // Ese día se agrega una columna `phase` (`group`/`knockout`), que es
+  // aditiva; la condición correcta pasa a ser "sin puntero **y** de fase
+  // knockout". Escribilo explícito desde ahora.
+  nextMatchId String?    @map("next_match_id") @db.Uuid
+  nextSlot    MatchSlot? @map("next_slot")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Restrict)
+
+  // Mismo patrón que `Team`: la FK valida el torneo *y* que el `club_id` de la
+  // fila sea el del torneo.
+  tournament Tournament @relation(fields: [tournamentId, clubId], references: [id, clubId], onDelete: Cascade)
+
+  // FK compuesta también hacia `teams`, un nivel más adentro: impide que el
+  // bracket de un torneo referencie una dupla de otro torneo del mismo club.
+  teamA Team? @relation("MatchTeamA", fields: [teamAId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  teamB Team? @relation("MatchTeamB", fields: [teamBId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+
+  // El ganador no lleva FK compuesta: el CHECK `matches_winner_is_a_side` ya
+  // lo obliga a ser `team_a_id` o `team_b_id`, que a su vez ya están validados.
+  // Una tercera FK compuesta sería un índice más por nada.
+  winnerTeam Team? @relation("MatchWinner", fields: [winnerTeamId], references: [id], onDelete: Restrict)
+
+  // `NoAction` y no `Cascade`, y la diferencia importa: con `Cascade`, borrar
+  // la final borraría en silencio el bracket entero por el efecto dominó del
+  // puntero. `NoAction` en Postgres difiere el chequeo al final de la
+  // sentencia, así que un solo `deleteMany` por torneo borra todo el árbol sin
+  // violar nada, pero borrar un partido suelto que todavía alimenta a otro
+  // falla ruidosamente, que es lo correcto.
+  nextMatch       Match?  @relation("BracketAdvance", fields: [nextMatchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  previousMatches Match[] @relation("BracketAdvance")
+
+  sets MatchSet[]
+
+  // La identidad real del partido dentro del cuadro: es lo que impide huecos y
+  // duplicados, y es el orden de render.
+  @@unique([tournamentId, round, position])
+  // Blanco de la FK compuesta de `MatchSet`.
+  @@unique([id, clubId])
+  @@index([clubId])
+  // La query de "¿queda algún partido con resultado?" del borrado de bracket.
+  @@index([tournamentId, status])
+  @@map("matches")
+}
+
+/// Resultado de un set: **una fila por set con los dos lados**, no una fila por
+/// lado. Un set es un hecho con dos números; partirlo en dos filas admitiría
+/// medio set huérfano y obligaría a validar en cada lectura que existan las dos
+/// mitades.
+///
+/// Sin `updated_at` a propósito: los sets no se editan en el lugar. Cargar un
+/// resultado borra los del partido y reinserta, que es lo que hace que la
+/// operación sea trivialmente idempotente.
+model MatchSet {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  // El invariante de tenancy no tiene excepción por profundidad.
+  clubId  String @map("club_id") @db.Uuid
+  matchId String @map("match_id") @db.Uuid
+
+  // 1..3, asignado por el server desde el orden del array del body: el cliente
+  // no lo manda, así no existe el caso "mandó los sets 1 y 3".
+  setNumber Int @map("set_number")
+
+  kind MatchSetKind @default(standard)
+
+  // Games del set. NULL en un `super_tiebreak`, donde no se juegan games.
+  teamAGames Int? @map("team_a_games")
+  teamBGames Int? @map("team_b_games")
+
+  // Puntos del tiebreak. En un set estándar solo cuando fue 7-6; en un
+  // `super_tiebreak` es el único score (10-8) y los games van NULL.
+  teamATiebreak Int? @map("team_a_tiebreak")
+  teamBTiebreak Int? @map("team_b_tiebreak")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  club  Club  @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  match Match @relation(fields: [matchId, clubId], references: [id, clubId], onDelete: Cascade)
+
+  @@unique([matchId, setNumber])
+  @@index([clubId])
+  @@map("match_sets")
 }

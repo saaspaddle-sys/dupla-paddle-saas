@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -30,6 +31,7 @@ import { CreateTeamDto } from './dto/create-team.dto';
 import { TeamParamsDto } from './dto/team-params.dto';
 import { TeamResponseDto } from './dto/team-response.dto';
 import { TournamentParamsDto } from './dto/tournament-params.dto';
+import { UpdateTeamDto } from './dto/update-team.dto';
 import { TeamsService } from './teams.service';
 
 /**
@@ -104,6 +106,46 @@ export class TeamsController {
     @Param() params: TournamentParamsDto,
   ): Promise<TeamResponseDto[]> {
     return this.teamsService.listByTournament(clubId, params.tournamentId);
+  }
+
+  @Patch(':teamId')
+  @UseGuards(JwtAuthGuard, ClubScopeGuard)
+  @ApiBearerAuth(JWT_SECURITY_SCHEME)
+  @ApiOperation({
+    summary:
+      'Siembra o desiembra una dupla en un torneo abierto. `seed: null` la devuelve al sorteo; un body vacío no cambia nada y devuelve la representación actual.',
+  })
+  @ApiOkResponse({ type: TeamResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Body inválido (`validation`): `seed` no entero, menor a 1, o mayor al tamaño de cuadro más grande.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Sin token, o token inválido/expirado/de una cuenta suspendida (`unauthenticated`).',
+  })
+  @ApiForbiddenResponse({
+    description: 'La cuenta no administra ningún club (`club_required`).',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'El torneo no existe o es de otro club (`tournament_not_found`), o la dupla no existe en ese torneo (`team_not_found`).',
+  })
+  @ApiConflictResponse({
+    description:
+      'El torneo ya no está abierto (`tournament_not_open`), o ya hay otra dupla con ese número de cabeza en el torneo (`duplicate_seed`; `details.seed` dice cuál).',
+  })
+  updateSeed(
+    @ClubId() clubId: string,
+    @Param() params: TeamParamsDto,
+    @Body() dto: UpdateTeamDto,
+  ): Promise<TeamResponseDto> {
+    return this.teamsService.updateSeed(
+      clubId,
+      params.tournamentId,
+      params.teamId,
+      dto,
+    );
   }
 
   @Delete(':teamId')
