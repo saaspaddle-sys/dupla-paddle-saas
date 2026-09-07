@@ -1,4 +1,9 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { runSerializable } from '../common/prisma/serializable';
 import { Prisma } from '../generated/prisma/client';
 import {
@@ -49,6 +54,20 @@ const MATCH_TEAMS_INCLUDE = {
   teamB: BRACKET_TEAM_INCLUDE,
 } as const;
 
+function bracketNotFound(): NotFoundException {
+  return new NotFoundException({
+    code: 'bracket_not_found',
+    message: 'the tournament has no bracket',
+  });
+}
+
+function tournamentNotInProgress(): ConflictException {
+  return new ConflictException({
+    code: 'tournament_not_in_progress',
+    message: 'the tournament must be in progress to delete its bracket',
+  });
+}
+
 function notEnoughTeams(teamCount: number): ConflictException {
   return new ConflictException({
     code: 'not_enough_teams',
@@ -96,6 +115,71 @@ export class BracketService {
     private readonly prisma: PrismaService,
     @Inject(BRACKET_SHUFFLE) private readonly shuffle: Shuffle,
   ) {}
+
+  async findOne(
+    clubId: string,
+    tournamentId: string,
+  ): Promise<BracketResponseDto> {
+    // El scope y el cuadro pertenecen al mismo snapshot, incluso si otro
+    // request lo borra mientras se lee.
+    return this.prisma.$transaction(
+      async (tx) => {
+        await requireTournamentInScope(tx, clubId, tournamentId);
+        const matches = await tx.match.findMany({
+          where: { tournamentId, clubId },
+          orderBy: [{ round: 'asc' }, { position: 'asc' }],
+          include: MATCH_TEAMS_INCLUDE,
+        });
+        if (matches.length === 0) throw bracketNotFound();
+        return toBracketResponse(tournamentId, matches);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+
+  async remove(clubId: string, tournamentId: string): Promise<void> {
+    await runSerializable(this.prisma, async (tx) => {
+      const tournament = await requireTournamentInScope(
+        tx,
+        clubId,
+        tournamentId,
+      );
+      const existing = await tx.match.findFirst({
+        where: { tournamentId, clubId },
+        select: { id: true },
+      });
+      if (!existing) throw bracketNotFound();
+      if (tournament.status !== 'in_progress') throw tournamentNotInProgress();
+
+      // Tomar el estado antes de comprobar resultados evita reabrir un
+      // torneo que una cancelación concurrente ya cerró. Todo se revierte
+      // si hay resultados; `open` no es visible hasta el commit.
+      const claimed = await tx.tournament.updateMany({
+        where: { id: tournamentId, clubId, status: 'in_progress' },
+        data: { status: 'open' },
+      });
+      if (claimed.count === 0) throw tournamentNotInProgress();
+      const result = await tx.match.findFirst({
+        where: {
+          tournamentId,
+          clubId,
+          OR: [
+            { outcome: { in: ['normal', 'walkover', 'retirement'] } },
+            { sets: { some: { clubId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (result)
+        throw new ConflictException({
+          code: 'bracket_has_results',
+          message: 'a bracket with recorded results cannot be deleted',
+        });
+      // La FK del árbol es NoAction: el conjunto completo se borra en una
+      // sentencia, nunca partido por partido.
+      await tx.match.deleteMany({ where: { tournamentId, clubId } });
+    });
+  }
 
   /**
    * Genera el cuadro y arranca el torneo. Las dos cosas son **un solo hecho**

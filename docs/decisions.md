@@ -2,6 +2,32 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-07 — Consultar y borrar el cuadro sin perder resultados
+
+`GET /tournaments/:tournamentId/bracket` devuelve el mismo DTO que el POST, leído del cuadro persistido y ordenado por ronda y posición. No vuelve a sortear. La lectura del scope y los partidos comparte una transacción `RepeatableRead`; un borrado concurrente no mezcla dos snapshots. Un torneo ajeno o inexistente devuelve `404 tournament_not_found`; uno propio sin cuadro devuelve `404 bracket_not_found`.
+
+`DELETE` devuelve `204` y reabre la inscripción (`in_progress → open`) en la misma transacción `Serializable` que elimina los partidos. Solo permite torneos en curso: un cuadro de un torneo cancelado o terminado devuelve `409 tournament_not_in_progress`, sin reabrirlo. Un segundo borrado devuelve `404 bracket_not_found`.
+
+La condición de borrado distingue resultados de byes: `normal`, `walkover`, `retirement` o cualquier set cargado producen `409 bracket_has_results`. Los byes automáticos no lo impiden, aunque su estado sea `finished`. El compare-and-swap toma el estado antes de leer resultados y se revierte si aparece un impedimento. El árbol se elimina con un solo `deleteMany` por torneo y club, como requiere su FK `NoAction`. El futuro handler de resultados debe participar también en transacciones serializables para mantener esa garantía frente a un borrado concurrente.
+
+Ambas rutas son clase `club`, con JWT y `ClubScopeGuard`; no agregan una ruta pública. Regenerar después de borrar produce nuevos ids y un sorteo nuevo, sin prometer que la disposición necesariamente sea distinta.
+
+## 2026-09-07 — El documento OpenAPI se commitea, y CI falla si quedó desincronizado
+
+**Contexto**: la convención ya decía que "lo que el frontend consume es `/docs`". El problema es que `/docs` solo existe con la API corriendo: para responder "qué endpoint llamo y qué me devuelve", quien trabaja en `apps/web` tenía que clonar `apps/api`, levantar Postgres, aplicar migraciones y bootear Nest. Preguntarle al backend sale más barato que eso, así que es lo que pasaba. El contrato estaba documentado y era, en la práctica, inaccesible para su único consumidor.
+
+**Decisión**: el documento se emite a `apps/api/openapi.json` y se commitea. `pnpm --filter api run openapi` lo regenera; `openapi:check` compara y falla si difiere, y CI lo corre después del build.
+
+**Tres cosas que condicionaron la implementación**:
+
+**1. Corre sobre `dist/`, no sobre las fuentes.** El plugin de `@nestjs/swagger` de `nest-cli.json` es un transformer de compilación: es el que infiere tipos y descripciones de los DTOs. Generar el documento con ts-node saltea el plugin y emite los 25 schemas sin una sola propiedad — un archivo que parece válido y no sirve para nada. Por eso los scripts son `nest build && node dist/swagger/generate-openapi.js`, y por eso el generador vive en `src/swagger/` y no en un `scripts/` en la raíz del paquete: `tsconfig.build.json` ya documenta que un archivo fuera de `src/` corre el `rootDir` inferido un nivel para arriba y desplaza todo el output.
+
+**2. `preview: true` para no necesitar la base.** `PrismaService` pide `DATABASE_URL` en el constructor y abre conexión en `onModuleInit`. Con `NestFactory.create(AppModule, { preview: true })` Nest arma el grafo de módulos y registra los controllers, pero no instancia providers ni corre hooks de ciclo de vida — que es exactamente lo que hace falta, porque Swagger lee metadata de las clases vía Reflect, no de las instancias. Sin esto, generar un contrato HTTP dependería de tener Postgres levantado, que es el mismo problema que la decisión venía a resolver.
+
+**3. El archivo va a `.prettierignore`.** Prettier colapsa los arrays cortos en una línea y `JSON.stringify` no. Con los dos formateando el mismo archivo, cada `format --write` lo dejaría en un estado que `openapi:check` lee como drift. El formato lo fija el generador, que es la única autoridad sobre ese archivo.
+
+**Lo que esto habilita**: los `code` de error dejan de estar solo en los decoradores y desperdigados en este archivo — quedan los 11 en un artefacto legible desde el repo. Y un cambio de contrato aparece en el diff del PR de la API, así que se ve al revisar y no en runtime del otro lado. Se descartó publicar el `.json` como release o exponerlo en un endpoint estático: las dos opciones lo sacan del diff, que es la mitad del valor.
+
 ## 2026-09-07 — Generar el cuadro: cerrar la inscripción primero, y escribir el árbol de la final hacia atrás
 
 **Contexto**: `POST /tournaments/:id/bracket` sortea la llave, la persiste entera y arranca el torneo. Tres problemas que no son obvios hasta que se escribe.

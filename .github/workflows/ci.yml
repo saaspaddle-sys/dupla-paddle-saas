@@ -59,11 +59,21 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm --filter api exec prisma generate
 
+      - name: Typecheck
+        run: pnpm --filter api run typecheck
+
       - name: Lint
         run: pnpm --filter api exec eslint "{src,test}/**/*.ts" --max-warnings 0
 
       - name: Build
         run: pnpm --filter api run build
+
+      # `openapi.json` es lo que lee apps/web para saber qué llamar. Si un endpoint
+      # cambia y el artefacto no se regenera, el frontend programa contra un contrato
+      # que ya no existe. Mismo criterio que el drift de Prisma, pero del lado del
+      # contrato HTTP. No necesita base: corre con `preview: true`.
+      - name: Check OpenAPI drift
+        run: pnpm --filter api run openapi:check
 
       - name: Apply migrations
         run: pnpm --filter api exec prisma migrate deploy

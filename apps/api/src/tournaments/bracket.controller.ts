@@ -1,5 +1,7 @@
 import {
   Controller,
+  Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -10,6 +12,8 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOperation,
@@ -43,6 +47,58 @@ import { TournamentParamsDto } from './dto/tournament-params.dto';
 @Controller('tournaments/:tournamentId/bracket')
 export class BracketController {
   constructor(private readonly bracketService: BracketService) {}
+
+  @Get()
+  @UseGuards(JwtAuthGuard, ClubScopeGuard)
+  @ApiBearerAuth(JWT_SECURITY_SCHEME)
+  @ApiOperation({ summary: 'Consulta el cuadro persistido del torneo.' })
+  @ApiOkResponse({ type: BracketResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Sin sesión válida (`unauthenticated`).',
+  })
+  @ApiForbiddenResponse({
+    description: 'La cuenta no administra un club (`club_required`).',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Torneo inexistente o de otro club (`tournament_not_found`), o sin cuadro (`bracket_not_found`).',
+  })
+  findOne(
+    @ClubId() clubId: string,
+    @Param() params: TournamentParamsDto,
+  ): Promise<BracketResponseDto> {
+    return this.bracketService.findOne(clubId, params.tournamentId);
+  }
+
+  @Delete()
+  @UseGuards(JwtAuthGuard, ClubScopeGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth(JWT_SECURITY_SCHEME)
+  @ApiOperation({
+    summary:
+      'Borra el cuadro sin resultados y reabre la inscripción. Los byes automáticos no impiden borrarlo.',
+  })
+  @ApiNoContentResponse({ description: 'Cuadro eliminado y torneo abierto.' })
+  @ApiUnauthorizedResponse({
+    description: 'Sin sesión válida (`unauthenticated`).',
+  })
+  @ApiForbiddenResponse({
+    description: 'La cuenta no administra un club (`club_required`).',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Torneo inexistente o de otro club (`tournament_not_found`), o sin cuadro (`bracket_not_found`).',
+  })
+  @ApiConflictResponse({
+    description:
+      'El torneo no está en curso (`tournament_not_in_progress`) o el cuadro tiene resultados o sets cargados (`bracket_has_results`).',
+  })
+  remove(
+    @ClubId() clubId: string,
+    @Param() params: TournamentParamsDto,
+  ): Promise<void> {
+    return this.bracketService.remove(clubId, params.tournamentId);
+  }
 
   @Post()
   @UseGuards(JwtAuthGuard, ClubScopeGuard)

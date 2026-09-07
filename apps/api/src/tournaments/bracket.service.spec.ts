@@ -6,7 +6,12 @@ type PrismaMock = {
   $transaction: jest.Mock;
   tournament: { findFirst: jest.Mock; updateMany: jest.Mock };
   team: { findMany: jest.Mock };
-  match: { createManyAndReturn: jest.Mock; findMany: jest.Mock };
+  match: {
+    createManyAndReturn: jest.Mock;
+    findMany: jest.Mock;
+    findFirst: jest.Mock;
+    deleteMany: jest.Mock;
+  };
 };
 
 const TOURNAMENT_ROW = {
@@ -65,6 +70,8 @@ describe('BracketService', () => {
       },
       team: { findMany: jest.fn().mockResolvedValue(teamRows(4)) },
       match: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        deleteMany: jest.fn().mockResolvedValue({ count: 3 }),
         // Devuelve ids derivados de las coordenadas para poder afirmar el
         // cableado de los punteros sin adivinar UUIDs.
         createManyAndReturn: jest.fn(
@@ -85,6 +92,80 @@ describe('BracketService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('findOne', () => {
+    it('hides tournaments outside the club before reading matches', async () => {
+      prisma.tournament.findFirst.mockResolvedValue(null);
+      await expect(
+        service.findOne('club-1', 'tournament-1'),
+      ).rejects.toMatchObject({ response: { code: 'tournament_not_found' } });
+      expect(prisma.match.findMany).not.toHaveBeenCalled();
+    });
+
+    it('reports a missing bracket', async () => {
+      await expect(
+        service.findOne('club-1', 'tournament-1'),
+      ).rejects.toMatchObject({ response: { code: 'bracket_not_found' } });
+    });
+  });
+
+  describe('remove', () => {
+    beforeEach(() => {
+      prisma.tournament.findFirst.mockResolvedValue({
+        ...TOURNAMENT_ROW,
+        status: 'in_progress',
+      });
+      prisma.match.findFirst
+        .mockResolvedValueOnce({ id: 'match-1' })
+        .mockResolvedValue(null);
+    });
+
+    it('deletes the whole scoped tree and reopens the tournament', async () => {
+      await service.remove('club-1', 'tournament-1');
+      expect(prisma.match.deleteMany).toHaveBeenCalledWith({
+        where: { tournamentId: 'tournament-1', clubId: 'club-1' },
+      });
+      expect(prisma.tournament.updateMany).toHaveBeenCalledWith({
+        where: { id: 'tournament-1', clubId: 'club-1', status: 'in_progress' },
+        data: { status: 'open' },
+      });
+    });
+
+    it('does not delete a bracket with results', async () => {
+      prisma.match.findFirst.mockResolvedValue({ id: 'result-1' });
+      await expect(
+        service.remove('club-1', 'tournament-1'),
+      ).rejects.toMatchObject({ response: { code: 'bracket_has_results' } });
+      expect(prisma.match.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it.each(['canceled', 'finished'])(
+      'does not reopen a %s tournament',
+      async (status) => {
+        prisma.tournament.findFirst.mockResolvedValue({
+          ...TOURNAMENT_ROW,
+          status,
+        });
+        await expect(
+          service.remove('club-1', 'tournament-1'),
+        ).rejects.toMatchObject({
+          response: { code: 'tournament_not_in_progress' },
+        });
+        expect(prisma.tournament.updateMany).not.toHaveBeenCalled();
+        expect(prisma.match.deleteMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it('does not delete when a concurrent state transition wins', async () => {
+      prisma.tournament.updateMany.mockResolvedValue({ count: 0 });
+      await expect(
+        service.remove('club-1', 'tournament-1'),
+      ).rejects.toMatchObject({
+        response: { code: 'tournament_not_in_progress' },
+      });
+      expect(prisma.match.deleteMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('persistence order', () => {

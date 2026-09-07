@@ -68,6 +68,12 @@ Elegí bien de entrada: envolver en `{ items, nextCursor }` una colección que y
 
 La API se autodocumenta con `@nestjs/swagger`: UI en `/docs`, documento en `/docs/json`. El setup vive en `apps/api/src/swagger/swagger.setup.ts`. Documentar es parte del contrato, no un extra — un endpoint que no aparece en `/docs` no existe para el resto del equipo ni para el frontend.
 
+**El documento además se commitea en `apps/api/openapi.json`.** `/docs` solo existe con la API corriendo, y quien trabaja en `apps/web` no levanta la API ni Postgres: pedirle que lo haga para responder "qué llamo y qué me devuelve" es lo que termina en preguntarle al backend. El archivo commiteado se lee desde el repo, sirve para generar tipos, y se ve en el diff del PR — un cambio de contrato deja de ser invisible para quien revisa.
+
+- **Lo genera `pnpm --filter api run openapi`**, y CI corre `openapi:check`, que falla si el archivo no coincide con los controllers. Mismo criterio que el drift de Prisma: el artefacto no se edita a mano.
+- Se genera con `preview: true`, así que **no necesita base ni variables de entorno**. Corre sobre `dist/`, no sobre las fuentes, porque el plugin de `@nestjs/swagger` es un transformer de compilación.
+- Está en `.prettierignore`: el formato lo fija el generador, y con Prettier reformateándolo el check leería drift en cada `format --write`.
+
 - **`@ApiTags` con la clase del endpoint**, tomada de `API_TAGS` (`club`, `public`, `platform`, `ops`), nunca un string suelto. Es lo que hace que la doc se lea agrupada por las clases de arriba, y obliga a decidir la clase al escribir el controller y no al revisarlo.
 - **`@ApiOperation({ summary })`** en cada handler: una línea diciendo qué hace.
 - **Respuestas declaradas con su DTO de respuesta** — el caso feliz (`@ApiOkResponse`, `@ApiCreatedResponse`) y los errores que el cliente maneja distinto (`404`, `409`, …). Nunca se declara una entidad interna como respuesta, por la misma razón que no se la devuelve.
@@ -81,4 +87,4 @@ La API mergea antes que el frontend que la consume, en su propio PR (`docs/workf
 - **Se puede en el lugar**: agregar un endpoint, agregar un campo opcional a un DTO de entrada, agregar un campo a un DTO de respuesta, agregar un `code` de error nuevo, aflojar una validación.
 - **No se puede en el lugar**: renombrar o borrar una ruta, un campo o un `code`; cambiar el tipo o el significado de un campo que ya existe; volver requerido un campo de entrada que era opcional; endurecer una validación sobre un payload que hoy se acepta. Se hace en tres pasos: se agrega lo nuevo, el consumidor migra en su propio PR, y lo viejo se borra en un tercero.
 - Mientras no exista **ningún** consumidor, un cambio incompatible es libre y es el momento barato para hacerlo — es lo que justificó renombrar `POST /auth/registro` a `POST /auth/register` (`docs/decisions.md`, 2026-08-14). Ese momento se cierra con el primer PR de frontend que consume el endpoint.
-- **Lo que el frontend consume es `/docs`**, no la spec en prosa ni el código: un cambio de contrato que no está reflejado ahí no llegó al otro lado.
+- **Lo que el frontend consume es `apps/api/openapi.json`** (o `/docs`, que es el mismo documento servido), no la spec en prosa ni el código: un cambio de contrato que no está reflejado ahí no llegó al otro lado. Como el artefacto se commitea, el PR de la API que rompe algo lo muestra en su propio diff, antes de que el frontend lo descubra en runtime.

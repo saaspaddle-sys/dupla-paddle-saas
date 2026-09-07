@@ -727,6 +727,164 @@ describe('Tournaments and teams (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
     }
 
+    it('GET reads the stored draw; DELETE allows byes, reopens and permits a new draw', async () => {
+      const { token, tournamentId } = await tournamentWithTeams(
+        'bracket-read-delete',
+        3,
+      );
+      const generated = await generate(token, tournamentId).expect(201);
+      const path = `/tournaments/${tournamentId}/bracket`;
+      const read = await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(read.body).toEqual(generated.body);
+      expect((read.body as BracketResponseBody).byeCount).toBe(1);
+      const removed = await request(app.getHttpServer())
+        .delete(path)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(204);
+      expect(removed.text).toBe('');
+      expect(await prisma.match.count({ where: { tournamentId } })).toBe(0);
+      expect(
+        (
+          await prisma.tournament.findUniqueOrThrow({
+            where: { id: tournamentId },
+          })
+        ).status,
+      ).toBe('open');
+      for (const method of ['get', 'delete'] as const) {
+        const missing = await request(app.getHttpServer())
+          [method](path)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(404);
+        expect((missing.body as ErrorBody).code).toBe('bracket_not_found');
+      }
+      const regenerated = await generate(token, tournamentId).expect(201);
+      const oldIds = new Set(
+        (generated.body as BracketResponseBody).matches.map(
+          (match) => match.id,
+        ),
+      );
+      expect(
+        (regenerated.body as BracketResponseBody).matches.every(
+          (match) => !oldIds.has(match.id),
+        ),
+      ).toBe(true);
+    });
+
+    it.each(['normal', 'walkover', 'retirement'] as const)(
+      'DELETE rejects %s results and rolls back the reopening',
+      async (outcome) => {
+        const { token, tournamentId } = await tournamentWithTeams(
+          `bracket-delete-${outcome}`,
+          2,
+        );
+        const generated = await generate(token, tournamentId).expect(201);
+        const match = (generated.body as BracketResponseBody).matches[0];
+        await prisma.match.update({
+          where: { id: match.id },
+          data: { status: 'finished', outcome, winnerTeamId: match.teamA!.id },
+        });
+        const response = await request(app.getHttpServer())
+          .delete(`/tournaments/${tournamentId}/bracket`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(409);
+        expect((response.body as ErrorBody).code).toBe('bracket_has_results');
+        expect(
+          (
+            await prisma.tournament.findUniqueOrThrow({
+              where: { id: tournamentId },
+            })
+          ).status,
+        ).toBe('in_progress');
+        expect(await prisma.match.count({ where: { tournamentId } })).toBe(1);
+      },
+    );
+
+    it('DELETE preserves a bracket with a recorded set even before its outcome is saved', async () => {
+      const { token, tournamentId } = await tournamentWithTeams(
+        'bracket-delete-set',
+        2,
+      );
+      const generated = await generate(token, tournamentId).expect(201);
+      const matchId = (generated.body as BracketResponseBody).matches[0].id;
+      const { clubId } = await prisma.tournament.findUniqueOrThrow({
+        where: { id: tournamentId },
+      });
+      await prisma.matchSet.create({
+        data: { clubId, matchId, setNumber: 1, teamAGames: 6, teamBGames: 2 },
+      });
+      const response = await request(app.getHttpServer())
+        .delete(`/tournaments/${tournamentId}/bracket`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(409);
+      expect((response.body as ErrorBody).code).toBe('bracket_has_results');
+      expect(await prisma.matchSet.count({ where: { matchId } })).toBe(1);
+      expect(
+        (
+          await prisma.tournament.findUniqueOrThrow({
+            where: { id: tournamentId },
+          })
+        ).status,
+      ).toBe('in_progress');
+    });
+
+    it.each(['canceled', 'finished'] as const)(
+      'GET preserves access to a %s draw while DELETE cannot reopen it',
+      async (status) => {
+        const { token, tournamentId } = await tournamentWithTeams(
+          `bracket-delete-${status}`,
+          2,
+        );
+        const generated = await generate(token, tournamentId).expect(201);
+        await prisma.tournament.update({
+          where: { id: tournamentId },
+          data: { status },
+        });
+        const path = `/tournaments/${tournamentId}/bracket`;
+        const read = await request(app.getHttpServer())
+          .get(path)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(read.body).toEqual(generated.body);
+        const response = await request(app.getHttpServer())
+          .delete(path)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(409);
+        expect((response.body as ErrorBody).code).toBe(
+          'tournament_not_in_progress',
+        );
+        expect(
+          (
+            await prisma.tournament.findUniqueOrThrow({
+              where: { id: tournamentId },
+            })
+          ).status,
+        ).toBe(status);
+        expect(await prisma.match.count({ where: { tournamentId } })).toBe(1);
+      },
+    );
+
+    it('GET and DELETE enforce authentication and tenant scope', async () => {
+      const { token, tournamentId } = await tournamentWithTeams(
+        'bracket-read-scope',
+        2,
+      );
+      await generate(token, tournamentId).expect(201);
+      const other = await createClub('bracket-read-other');
+      const path = `/tournaments/${tournamentId}/bracket`;
+      for (const method of ['get', 'delete'] as const) {
+        await request(app.getHttpServer())[method](path).expect(401);
+        const response = await request(app.getHttpServer())
+          [method](path)
+          .set('Authorization', `Bearer ${other.token}`)
+          .expect(404);
+        expect((response.body as ErrorBody).code).toBe('tournament_not_found');
+      }
+      expect(await prisma.match.count({ where: { tournamentId } })).toBe(1);
+    });
+
     /**
      * El sorteo es real (`cryptoShuffle`), así que estos tests fijan
      * **invariantes** y no una disposición exacta — mismo criterio que los
