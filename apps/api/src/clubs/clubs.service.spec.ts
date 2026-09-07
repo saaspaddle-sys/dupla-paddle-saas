@@ -67,6 +67,33 @@ function uniqueViolation(
   });
 }
 
+/**
+ * La forma que produce de verdad `@prisma/adapter-pg`: **sin `meta.target`**.
+ * Es la que llega en producción, así que los mapeos a 409 se prueban también
+ * contra ella. El mock cómodo de arriba pasaba igual con el chequeo roto —
+ * ver la entrada del 2026-09-06 en `docs/decisions.md`.
+ */
+function adapterUniqueViolation(
+  fields: string[],
+): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: {
+      modelName: 'Club',
+      driverAdapterError: {
+        name: 'DriverAdapterError',
+        cause: {
+          originalCode: '23505',
+          originalMessage: 'duplicate key value violates unique constraint',
+          kind: 'UniqueConstraintViolation',
+          constraint: { fields },
+        },
+      },
+    },
+  });
+}
+
 describe('ClubsService', () => {
   let service: ClubsService;
   let prisma: PrismaMock;
@@ -212,7 +239,36 @@ describe('ClubsService', () => {
       );
     });
 
-    // Un target que no reconocemos no se disfraza de 409.
+    // Los dos de arriba mockean `meta.target`, que el driver adapter no
+    // popula: pasaban igual con el chequeo roto. Estos dos son los que de
+    // verdad prueban el mapeo, contra la forma que llega en producción.
+    it('maps the real driver-adapter shape on subscriptions.user_id', async () => {
+      prisma.subscription.create.mockRejectedValue(
+        adapterUniqueViolation(['user_id']),
+      );
+
+      await expect(service.create('user-1', createDto())).rejects.toMatchObject(
+        {
+          status: 409,
+          response: expect.objectContaining({
+            code: 'club_limit_reached',
+          }) as unknown,
+        },
+      );
+    });
+
+    it('maps the real driver-adapter shape on clubs.slug', async () => {
+      prisma.club.create.mockRejectedValue(adapterUniqueViolation(['slug']));
+
+      await expect(service.create('user-1', createDto())).rejects.toMatchObject(
+        {
+          status: 409,
+          response: expect.objectContaining({ code: 'slug_taken' }) as unknown,
+        },
+      );
+    });
+
+    // Un índice que no reconocemos no se disfraza de 409.
     it('lets an unrecognized unique violation bubble up', async () => {
       const error = uniqueViolation(['something_else']);
       prisma.club.create.mockRejectedValue(error);

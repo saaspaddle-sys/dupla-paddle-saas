@@ -3,13 +3,13 @@ import {
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { uniqueViolationMentions } from '../common/prisma/unique-violation';
 import { normalizeName } from '../common/transforms/normalize';
 import {
   RESERVED_SLUGS,
   SLUG_MAX_LENGTH,
   slugify,
 } from '../common/transforms/slug';
-import { Prisma } from '../generated/prisma/client';
 import {
   SubscriptionPlan,
   SubscriptionStatus,
@@ -240,37 +240,30 @@ export class ClubsService {
    * la garantía. El índice único lo es, y este es el fallback que mapea su
    * violación (P2002) al mismo 409 que ya tira el camino normal. Mismo
    * patrón que `PlayersService`.
+   *
+   * De dónde sale el índice lo resuelve `uniqueViolationMentions`, y no un
+   * `meta.target` leído a mano: con el driver adapter de Prisma 7 ese campo
+   * no existe, así que la versión anterior de este chequeo no podía disparar
+   * nunca. Ver la entrada del 2026-09-06 en `docs/decisions.md`.
    */
   private toKnownConflict(error: unknown): ConflictException | undefined {
-    if (
-      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-      error.code !== 'P2002'
-    ) {
-      return undefined;
-    }
-
-    const target = this.constraintTarget(error.meta);
-    if (target.some((field) => field.includes('slug'))) {
+    if (uniqueViolationMentions(error, 'slug')) {
       return slugTaken();
     }
     // `subscriptions_user_id_key`: la cuenta ya tiene suscripción, o sea que
     // ya tiene club. Es el cupo, no un choque de identidad.
-    if (target.some((field) => field.includes('user_id'))) {
+    //
+    // Los dos fragmentos son el mismo campo escrito de las dos formas en que
+    // puede llegar: `user_id` es la columna (lo que reporta el driver adapter
+    // y lo que lleva el nombre del índice) y `userid` es `userId` en
+    // minúscula, que es como llegaría por `meta.target`. Con uno solo, media
+    // de las dos formas caería al 500.
+    if (uniqueViolationMentions(error, 'user_id', 'userid')) {
       return clubLimitReached();
     }
-    // Un target que no reconocemos no se disfraza de 409: se deja subir como
+    // Un índice que no reconocemos no se disfraza de 409: se deja subir como
     // 500, que es lo que realmente es.
     return undefined;
-  }
-
-  private constraintTarget(meta: unknown): string[] {
-    const target = (meta as { target?: unknown } | undefined)?.target;
-    if (Array.isArray(target)) {
-      return target.filter(
-        (value): value is string => typeof value === 'string',
-      );
-    }
-    return typeof target === 'string' ? [target] : [];
   }
 }
 

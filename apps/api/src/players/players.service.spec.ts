@@ -525,6 +525,64 @@ describe('PlayersService', () => {
 
       await expect(service.register(createDto())).rejects.toBe(error);
     });
+
+    /**
+     * La forma que produce de verdad `@prisma/adapter-pg`: **sin
+     * `meta.target`**. Los tres tests de arriba mockean `target` y pasaban
+     * igual con el chequeo roto, que no podía disparar nunca en producción.
+     * Estos dos son los que prueban el mapeo contra lo que llega de verdad —
+     * ver la entrada del 2026-09-06 en `docs/decisions.md`.
+     */
+    function adapterP2002Error(
+      fields: string[],
+    ): Prisma.PrismaClientKnownRequestError {
+      return new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: '7.9.1',
+          meta: {
+            modelName: 'User',
+            driverAdapterError: {
+              name: 'DriverAdapterError',
+              cause: {
+                originalCode: '23505',
+                originalMessage:
+                  'duplicate key value violates unique constraint',
+                kind: 'UniqueConstraintViolation',
+                constraint: { fields },
+              },
+            },
+          },
+        },
+      );
+    }
+
+    it('maps the real driver-adapter shape on the dni column', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.player.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue(adapterP2002Error(['dni']));
+
+      await expect(service.register(createDto())).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          code: 'dni_has_account',
+        }) as unknown,
+      });
+    });
+
+    it('maps the real driver-adapter shape on the email column', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.player.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue(adapterP2002Error(['email']));
+
+      await expect(service.register(createDto())).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          code: 'email_registered',
+        }) as unknown,
+      });
+    });
   });
 
   it('hashes the password before opening the transaction', async () => {

@@ -29,9 +29,13 @@ Las columnas viajan en `cause.constraint.fields` (snake_case), o el nombre del �
 
 **Decisión**: la lectura del índice se centraliza en `common/prisma/unique-violation.ts` (`uniqueViolationTargets` / `uniqueViolationMentions`), que mira las tres formas —`meta.target`, `constraint.fields` y `constraint.index`— y devuelve todo en minúscula. Los tests de ese helper usan la forma real capturada contra Postgres, no una inventada.
 
-**Estado**: `TeamsService` ya usa el helper (sus dos mapeos: `duplicate_team` y `duplicate_seed`). **`PlayersService` y `ClubsService` siguen con el chequeo viejo** y por lo tanto con el fallback muerto: un choque de `dni`, `email` o `slug` por carrera sale hoy como 500. No se tocaron en este PR por alcance; queda pendiente migrarlos al helper y borrar los dos `constraintTarget` privados duplicados.
+**Estado**: los tres services usan el helper (`TeamsService` con `duplicate_team` y `duplicate_seed`, `PlayersService` con `dni_has_account` y `email_registered`, `ClubsService` con `slug_taken` y `club_limit_reached`), y los tres `constraintTarget` privados duplicados dejaron de existir.
+
+Un detalle del de `ClubsService`: el índice `subscriptions_user_id_key` se busca con **dos** fragmentos, `user_id` y `userid`. Son el mismo campo escrito de las dos formas en que puede llegar —la columna, que es lo que reporta el adapter, y `userId` en minúscula, que es lo que llegaría por `meta.target`—, y con uno solo la mitad de las formas caería al 500 igual que antes.
 
 **Regla que queda**: cuando un mock construye un error de una librería, la forma del mock se verifica contra la real al menos una vez. Si no, lo único que se prueba es que el código coincide con lo que creíamos.
+
+Los tests de los tres services ahora tienen las dos formas: la clásica y la del adapter. Se comprobó que los cinco casos de la forma real **fallan** si se rompe el helper a propósito, que es la única manera de saber que un test de regresión regresiona algo.
 
 ## 2026-09-05 — Slice 4: el sistema sortea la llave respetando cabezas de serie, y los byes van a las sembradas
 

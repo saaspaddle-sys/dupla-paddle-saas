@@ -1,5 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { hashPassword } from '../common/crypto/password';
+import { uniqueViolationMentions } from '../common/prisma/unique-violation';
 import {
   normalizeCountry,
   normalizeDni,
@@ -8,7 +9,6 @@ import {
   normalizePhone,
   normalizeText,
 } from '../common/transforms/normalize';
-import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterPlayerDto } from './dto/register-player.dto';
 import { RegisterPlayerResponseDto } from './dto/register-player-response.dto';
@@ -144,34 +144,21 @@ export class PlayersService {
    * mismo DNI o email pasan igual el chequeo. El índice único es la
    * garantía real, y este es el fallback que mapea su violación (P2002)
    * al mismo 409 que ya tira el camino normal.
+   *
+   * De dónde sale el índice lo resuelve `uniqueViolationMentions`, y no un
+   * `meta.target` leído a mano: con el driver adapter de Prisma 7 ese campo
+   * no existe, así que la versión anterior de este chequeo no podía disparar
+   * nunca. Ver la entrada del 2026-09-06 en `docs/decisions.md`.
    */
   private toKnownConflict(error: unknown): ConflictException | undefined {
-    if (
-      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-      error.code !== 'P2002'
-    ) {
-      return undefined;
-    }
-
-    const target = this.constraintTarget(error.meta);
-    if (target.some((field) => field.includes('dni'))) {
+    if (uniqueViolationMentions(error, 'dni')) {
       return dniAlreadyHasAccount();
     }
-    if (target.some((field) => field.includes('email'))) {
+    if (uniqueViolationMentions(error, 'email')) {
       return emailAlreadyRegistered();
     }
-    // Un target que no reconocemos no se disfraza de 409: se deja subir
+    // Un índice que no reconocemos no se disfraza de 409: se deja subir
     // como 500, que es lo que realmente es.
     return undefined;
-  }
-
-  private constraintTarget(meta: unknown): string[] {
-    const target = (meta as { target?: unknown } | undefined)?.target;
-    if (Array.isArray(target)) {
-      return target.filter(
-        (value): value is string => typeof value === 'string',
-      );
-    }
-    return typeof target === 'string' ? [target] : [];
   }
 }
