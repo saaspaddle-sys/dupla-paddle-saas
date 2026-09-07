@@ -2,6 +2,37 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-06 — Un P2002 de Prisma 7 no trae `meta.target`, y eso dejó tres mapeos a 409 sin efecto
+
+**Contexto**: al implementar `PATCH /tournaments/:id/teams/:teamId`, el test e2e del `duplicate_seed` devolvió **500 en vez de 409**. El código mapeaba la violación del índice único leyendo `error.meta.target`, que es la forma clásica del motor de Rust.
+
+**Hallazgo**: Prisma 7 no tiene motor de Rust. Con el driver adapter (`@prisma/adapter-pg`, obligatorio desde la entrada "Prisma 7: setup real") un P2002 llega **sin `target` por ningún lado**:
+
+```
+meta: {
+  modelName: 'Team',
+  driverAdapterError: {
+    name: 'DriverAdapterError',
+    cause: {
+      originalCode: '23505',
+      originalMessage: 'duplicate key value violates unique constraint "teams_tournament_id_seed_key"',
+      kind: 'UniqueConstraintViolation',
+      constraint: { fields: ['tournament_id', 'seed'] },
+    },
+  },
+}
+```
+
+Las columnas viajan en `cause.constraint.fields` (snake_case), o el nombre del índice en `cause.constraint.index` cuando el adapter no las pudo resolver.
+
+**Por qué no se había notado**: los tres services que mapean P2002 (`PlayersService`, `ClubsService`, `TeamsService`) lo usan como **fallback de carrera**, no como camino normal — un `SELECT` previo da el 409 en el caso común. El fallback solo corre cuando dos requests simultáneos ganan la carrera, que es justo lo que ningún test determinista ejercita. Los tests unitarios tampoco lo agarraban: **mockeaban el error con `meta.target`**, o sea con una forma que en producción no existe. Un mock puede confirmar una suposición equivocada indefinidamente.
+
+**Decisión**: la lectura del índice se centraliza en `common/prisma/unique-violation.ts` (`uniqueViolationTargets` / `uniqueViolationMentions`), que mira las tres formas —`meta.target`, `constraint.fields` y `constraint.index`— y devuelve todo en minúscula. Los tests de ese helper usan la forma real capturada contra Postgres, no una inventada.
+
+**Estado**: `TeamsService` ya usa el helper (sus dos mapeos: `duplicate_team` y `duplicate_seed`). **`PlayersService` y `ClubsService` siguen con el chequeo viejo** y por lo tanto con el fallback muerto: un choque de `dni`, `email` o `slug` por carrera sale hoy como 500. No se tocaron en este PR por alcance; queda pendiente migrarlos al helper y borrar los dos `constraintTarget` privados duplicados.
+
+**Regla que queda**: cuando un mock construye un error de una librería, la forma del mock se verifica contra la real al menos una vez. Si no, lo único que se prueba es que el código coincide con lo que creíamos.
+
 ## 2026-09-05 — Slice 4: el sistema sortea la llave respetando cabezas de serie, y los byes van a las sembradas
 
 **Contexto**: el slice 4 genera la llave. Había que decidir en qué orden entran las duplas al cuadro, y qué pasa cuando la cantidad no es potencia de 2 —que es casi siempre— y sobran lugares.

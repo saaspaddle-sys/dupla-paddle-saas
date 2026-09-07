@@ -4,8 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { runSerializable } from '../common/prisma/serializable';
+import { uniqueViolationMentions } from '../common/prisma/unique-violation';
 import { normalizeUuid } from '../common/transforms/normalize';
-import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { TeamResponseDto } from './dto/team-response.dto';
@@ -259,33 +259,20 @@ export class TeamsService {
    * que `ClubsService` y `PlayersService`.
    */
   private toKnownConflict(error: unknown): ConflictException | undefined {
-    if (
-      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-      error.code !== 'P2002'
-    ) {
-      return undefined;
-    }
-
-    const target = this.constraintTarget(error.meta);
-    // Sirve tanto si Prisma reporta los nombres de campo (`player1Id`) como
-    // el nombre del constraint
-    // (`teams_tournament_id_player1_id_player2_id_key`), que es lo que
-    // devuelve el driver adapter.
-    if (target.some((field) => field.toLowerCase().includes('player1'))) {
+    // `player1` cubre las dos formas en que puede llegar el índice: el nombre
+    // del campo (`player1Id`) y el del constraint
+    // (`teams_tournament_id_player1_id_player2_id_key`).
+    //
+    // Esto miraba solo `meta.target`, que el driver adapter de pg **no**
+    // popula, así que era un 409 que no podía dispararse nunca. No se notó
+    // porque el `findFirst` previo atrapa el duplicado en el camino normal y
+    // esto es el fallback de la carrera. El porqué, en
+    // `uniqueViolationTargets`.
+    if (uniqueViolationMentions(error, 'player1')) {
       return duplicateTeam();
     }
-    // Un target que no reconocemos no se disfraza de 409: se deja subir como
+    // Un índice que no reconocemos no se disfraza de 409: se deja subir como
     // 500, que es lo que realmente es.
     return undefined;
-  }
-
-  private constraintTarget(meta: unknown): string[] {
-    const target = (meta as { target?: unknown } | undefined)?.target;
-    if (Array.isArray(target)) {
-      return target.filter(
-        (value): value is string => typeof value === 'string',
-      );
-    }
-    return typeof target === 'string' ? [target] : [];
   }
 }
