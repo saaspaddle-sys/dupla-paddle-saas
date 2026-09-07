@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { cryptoShuffle } from '../matches/bracket.builder';
 import { PrismaModule } from '../prisma/prisma.module';
+import { BracketController } from './bracket.controller';
+import { BRACKET_SHUFFLE, BracketService } from './bracket.service';
 import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
 import { TournamentsController } from './tournaments.controller';
@@ -29,7 +32,17 @@ import { TournamentsService } from './tournaments.service';
  */
 @Module({
   imports: [PrismaModule, AuthModule],
-  controllers: [TournamentsController, TeamsController],
-  providers: [TournamentsService, TeamsService],
+  controllers: [TournamentsController, TeamsController, BracketController],
+  providers: [
+    TournamentsService,
+    TeamsService,
+    BracketService,
+    // El barajado del sorteo entra por DI y no como un import directo adentro
+    // de `BracketService`. Es lo que permite fijarlo en un test —con
+    // `cryptoShuffle` adentro, afirmar dónde cayó una dupla sería afirmar
+    // sobre el azar— sin agregarle al service un parámetro que en producción
+    // nadie pasa.
+    { provide: BRACKET_SHUFFLE, useValue: cryptoShuffle },
+  ],
 })
 export class TournamentsModule {}

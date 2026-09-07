@@ -2,6 +2,27 @@
 
 Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
 
+## 2026-09-07 — Generar el cuadro: cerrar la inscripción primero, y escribir el árbol de la final hacia atrás
+
+**Contexto**: `POST /tournaments/:id/bracket` sortea la llave, la persiste entera y arranca el torneo. Tres problemas que no son obvios hasta que se escribe.
+
+**1. El árbol se escribe de la final hacia la primera ronda, una ronda por query.** No es una optimización: `next_match_id` es una FK contra `matches`, así que el partido destino tiene que existir cuando se inserta el que lo apunta. Yendo al revés —de la primera ronda hacia adelante, que es como se lee un cuadro— cada puntero apuntaría a algo que todavía no existe. Se usa `createManyAndReturn` y no `createMany` porque hacen falta los ids recién generados para armar los punteros de la ronda siguiente; con `createMany` habría que pedirlos con un `findMany` más por ronda.
+
+Se descartó insertar todo en una sola query confiando en que Postgres difiere el chequeo de FK al final de la sentencia. Es cierto —los triggers de una FK no diferible corren al terminar el statement, no fila por fila— pero es una sutileza del motor que nadie que lea el código va a tener presente, y el día que alguien parta el insert en dos se rompe sin que ningún test lo explique. El orden explícito se sostiene solo, y tiene un test que lo fija.
+
+**2. El torneo se cierra antes de leer los inscriptos, no después.** Mientras el torneo siga `open`, `TeamsService` acepta inscripciones. Leer las duplas y después cerrar deja una ventana en la que una inscripción que la API ya aceptó queda afuera de un cuadro que ya se generó — y como el cuadro es el único registro del sorteo, esa dupla no aparece en ningún lado.
+
+El cierre es un **compare-and-swap**: `updateMany` con `where: { status: 'open' }`. Si actualiza cero filas, otro request ganó la carrera y la respuesta es `409 bracket_already_exists`. Es lo que ya anticipaba el comentario de `TournamentsService.update` ("cuando existan `in_progress` y `finished` como transiciones reales, esto pasa a ser un `updateMany` condicionado por el estado leído").
+
+**3. Corre en `Serializable`, igual que el alta de duplas, y tiene que ser el mismo nivel.** El aislamiento serializable de Postgres (SSI) solo garantiza serializabilidad **entre transacciones serializables**: si esta corriera en Read Committed, Postgres no tendría cómo detectar el conflicto entre "inscribo una dupla" y "congelo la lista de inscriptos", y el CAS no alcanzaría porque la otra transacción ya tomó su snapshot. Una transacción más débil al lado de una serializable no es "un poco menos segura": deja de haber garantía.
+
+**Otras dos cosas que quedaron decididas acá**:
+
+- **`open → in_progress` no es una transición que el cliente pueda pedir.** No entra en `ALLOWED_STATUS_TRANSITIONS`, así que un `PATCH /tournaments/:id` con `status: 'in_progress'` sigue devolviendo `409 invalid_status_transition`. El estado es una consecuencia de generar el cuadro, no algo que se setee por separado — poder hacerlo a mano permitiría un torneo `in_progress` sin llave.
+- **`bracket_already_exists` y no `tournament_not_open`** cuando el torneo ya arrancó. Es el error que de verdad va a pasar (el club aprieta "generar" dos veces) y merece decir eso, no "el torneo no está abierto para inscripciones", que manda a buscar un problema que no existe.
+
+El shape de la respuesta (`BracketResponseDto`) se diseñó pensando en que lo van a reusar el `GET` y después la vista pública: no sale `clubId` de ningún nivel, y las duplas van con `PlayerSummaryDto`, que ya tiene la garantía de no exponer `dni`.
+
 ## 2026-09-06 — Un P2002 de Prisma 7 no trae `meta.target`, y eso dejó tres mapeos a 409 sin efecto
 
 **Contexto**: al implementar `PATCH /tournaments/:id/teams/:teamId`, el test e2e del `duplicate_seed` devolvió **500 en vez de 409**. El código mapeaba la violación del índice único leyendo `error.meta.target`, que es la forma clásica del motor de Rust.

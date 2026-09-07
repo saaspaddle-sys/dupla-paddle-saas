@@ -44,6 +44,27 @@ interface TeamResponseBody {
   createdAt: string;
 }
 
+interface BracketMatchBody {
+  id: string;
+  round: number;
+  position: number;
+  teamA: { id: string; seed: number | null } | null;
+  teamB: { id: string; seed: number | null } | null;
+  winnerTeamId: string | null;
+  status: string;
+  outcome: string | null;
+  nextMatchId: string | null;
+  nextSlot: string | null;
+}
+
+interface BracketResponseBody {
+  tournamentId: string;
+  bracketSize: number;
+  roundCount: number;
+  byeCount: number;
+  matches: BracketMatchBody[];
+}
+
 describe('Tournaments and teams (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -171,6 +192,37 @@ describe('Tournaments and teams (e2e)', () => {
     return response.body as TournamentResponseBody;
   }
 
+  /**
+   * Crea perfiles de jugador **directo por Prisma**, sin `POST /auth/register`.
+   *
+   * Es a propósito y no un atajo perezoso: el registro hashea con bcrypt, que
+   * es lento por diseño, y un test de cuadro necesita hasta doce jugadores.
+   * Pasarlos todos por el endpoint agregaba más de un minuto a la suite y la
+   * hacía tumbar por timeout a los tests de otros archivos que corren en
+   * paralelo. Lo que estos tests prueban es el bracket, no el alta de
+   * jugadores — eso tiene su propia suite.
+   *
+   * Un `Player` sin `userId` es un perfil precargado por un club, que es un
+   * estado válido del modelo (ver `docs/data-model.md`), así que el fixture no
+   * inventa nada que la aplicación no acepte.
+   */
+  async function createPlayers(count: number): Promise<string[]> {
+    const dnis = Array.from({ length: count }, () => testDni());
+    await prisma.player.createMany({
+      data: dnis.map((dni, index) => ({
+        dni,
+        firstName: 'Jugador',
+        lastName: `Bracket ${index + 1}`,
+      })),
+    });
+
+    const players = await prisma.player.findMany({
+      where: { dni: { in: dnis } },
+      select: { id: true },
+    });
+    return players.map((player) => player.id);
+  }
+
   /** Inscribe una dupla nueva (dos jugadores recién registrados) en el torneo. */
   async function createTeam(
     token: string,
@@ -206,10 +258,17 @@ describe('Tournaments and teams (e2e)', () => {
   });
 
   afterAll(async () => {
-    // Orden inverso al de las FKs: `teams` referencia torneo y club,
-    // `tournaments` referencia club (`Restrict`), y `clubs`/`players`
-    // referencian `users` (`Restrict`).
+    // Orden inverso al de las FKs: `matches` referencia duplas con
+    // `Restrict` —así que va antes que `teams`, o el borrado de duplas muere
+    // contra la FK—, `teams` referencia torneo y club, `tournaments`
+    // referencia club (`Restrict`), y `clubs`/`players` referencian `users`
+    // (`Restrict`).
+    //
+    // Un solo `deleteMany` por club borra el árbol entero de partidos aunque
+    // se apunten entre sí: `matches_next_match_id_fkey` es `NO ACTION`, que
+    // en Postgres difiere el chequeo al final de la sentencia.
     for (const clubId of createdClubIds) {
+      await prisma.match.deleteMany({ where: { clubId } });
       await prisma.team.deleteMany({ where: { clubId } });
       await prisma.tournament.deleteMany({ where: { clubId } });
     }
@@ -610,6 +669,245 @@ describe('Tournaments and teams (e2e)', () => {
 
       expect(response.status).toBe(409);
       expect((response.body as ErrorBody).code).toBe('tournament_not_open');
+    });
+  });
+
+  describe('POST /tournaments/:tournamentId/bracket', () => {
+    /**
+     * Inscribe `count` duplas en un torneo nuevo y devuelve todo lo que hace
+     * falta para generar el cuadro. Cada dupla son dos jugadores nuevos, así
+     * que las etiquetas van sin dígitos: el fixture las usa como apellido y
+     * `NAME_REGEX` no acepta números.
+     */
+    async function tournamentWithTeams(
+      testCase: string,
+      count: number,
+    ): Promise<{
+      token: string;
+      tournamentId: string;
+      teams: TeamResponseBody[];
+    }> {
+      const club = await createClub(testCase);
+      const tournament = await createTournament(club.token, testCase);
+      // Los jugadores van por Prisma (ver `createPlayers`); las duplas sí van
+      // por la API, porque el orden canónico del par y el scoping por torneo
+      // son parte de lo que el cuadro después consume.
+      const playerIds = await createPlayers(count * 2);
+      const teams: TeamResponseBody[] = [];
+      for (let index = 0; index < count; index += 1) {
+        const created = await request(app.getHttpServer())
+          .post(`/tournaments/${tournament.id}/teams`)
+          .set('Authorization', `Bearer ${club.token}`)
+          .send({
+            player1Id: playerIds[index * 2],
+            player2Id: playerIds[index * 2 + 1],
+          })
+          .expect(201);
+        teams.push(created.body as TeamResponseBody);
+      }
+      return { token: club.token, tournamentId: tournament.id, teams };
+    }
+
+    function seed(
+      token: string,
+      tournamentId: string,
+      teamId: string,
+      value: number,
+    ) {
+      return request(app.getHttpServer())
+        .patch(`/tournaments/${tournamentId}/teams/${teamId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ seed: value })
+        .expect(200);
+    }
+
+    function generate(token: string, tournamentId: string) {
+      return request(app.getHttpServer())
+        .post(`/tournaments/${tournamentId}/bracket`)
+        .set('Authorization', `Bearer ${token}`);
+    }
+
+    /**
+     * El sorteo es real (`cryptoShuffle`), así que estos tests fijan
+     * **invariantes** y no una disposición exacta — mismo criterio que los
+     * unit tests del generador. Un test que afirme "team-3 va en la posición
+     * 2" acá sería un test que falla una vez cada tantas corridas.
+     */
+    it('201: materializes the whole tree, wired and connected', async () => {
+      const { token, tournamentId } = await tournamentWithTeams('bracket', 4);
+
+      const response = await generate(token, tournamentId);
+
+      expect(response.status).toBe(201);
+      const bracket = response.body as BracketResponseBody;
+      expect(bracket.bracketSize).toBe(4);
+      expect(bracket.roundCount).toBe(2);
+      expect(bracket.byeCount).toBe(0);
+      // S − 1 partidos, con las rondas futuras ya creadas y vacías.
+      expect(bracket.matches).toHaveLength(3);
+
+      const final = bracket.matches.filter((m) => m.nextMatchId === null);
+      expect(final).toHaveLength(1);
+      expect(final[0].round).toBe(2);
+      expect(final[0].nextSlot).toBeNull();
+
+      // Todo puntero apunta a un partido que existe de verdad: es lo que
+      // prueba que el orden de inserción (de la final hacia atrás) satisface
+      // la FK contra `matches`.
+      const ids = new Set(bracket.matches.map((m) => m.id));
+      for (const match of bracket.matches) {
+        if (match.nextMatchId === null) continue;
+        expect(ids.has(match.nextMatchId)).toBe(true);
+        expect(['a', 'b']).toContain(match.nextSlot);
+      }
+
+      // La segunda ronda nace vacía esperando ganadores.
+      const secondRound = bracket.matches.filter((m) => m.round === 2);
+      expect(secondRound[0].teamA).toBeNull();
+      expect(secondRound[0].teamB).toBeNull();
+    });
+
+    it('201: closes registration — the tournament goes to in_progress', async () => {
+      const { token, tournamentId } = await tournamentWithTeams(
+        'bracket-closes',
+        2,
+      );
+
+      await generate(token, tournamentId).expect(201);
+
+      const tournament = await request(app.getHttpServer())
+        .get(`/tournaments/${tournamentId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect((tournament.body as TournamentResponseBody).status).toBe(
+        'in_progress',
+      );
+
+      // Y con la llave armada ya no entran ni salen duplas.
+      const [lateA, lateB] = await createPlayers(2);
+      const late = await request(app.getHttpServer())
+        .post(`/tournaments/${tournamentId}/teams`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ player1Id: lateA, player2Id: lateB });
+      expect(late.status).toBe(409);
+      expect((late.body as ErrorBody).code).toBe('tournament_not_open');
+    });
+
+    it('201: byes land on the seeded teams, and never against another bye', async () => {
+      const { token, tournamentId, teams } = await tournamentWithTeams(
+        'bracket-byes',
+        6,
+      );
+      await seed(token, tournamentId, teams[0].id, 1);
+      await seed(token, tournamentId, teams[1].id, 2);
+
+      const response = await generate(token, tournamentId).expect(201);
+      const bracket = response.body as BracketResponseBody;
+
+      expect(bracket.bracketSize).toBe(8);
+      expect(bracket.byeCount).toBe(2);
+
+      const firstRound = bracket.matches.filter((m) => m.round === 1);
+      const byes = firstRound.filter((m) => m.outcome === 'bye');
+      expect(byes).toHaveLength(2);
+
+      // Los dos byes son de las sembradas, y nacen cerrados con ganador.
+      expect(byes.map((m) => m.teamA?.seed).sort()).toEqual([1, 2]);
+      for (const bye of byes) {
+        expect(bye.teamB).toBeNull();
+        expect(bye.status).toBe('finished');
+        expect(bye.winnerTeamId).toBe(bye.teamA?.id);
+      }
+
+      // Ningún partido de primera ronda con los dos lados vacíos.
+      for (const match of firstRound) {
+        expect(match.teamA).not.toBeNull();
+      }
+
+      // El ganador del bye ya está puesto en la segunda ronda.
+      const secondRoundTeams = bracket.matches
+        .filter((m) => m.round === 2)
+        .flatMap((m) => [m.teamA?.id, m.teamB?.id])
+        .filter((id): id is string => id !== undefined && id !== null);
+      expect(secondRoundTeams.sort()).toEqual(
+        byes.map((m) => m.teamA?.id).sort(),
+      );
+    });
+
+    it('409 bracket_already_exists: generating twice does not redraw the bracket', async () => {
+      const { token, tournamentId } = await tournamentWithTeams(
+        'bracket-twice',
+        2,
+      );
+      await generate(token, tournamentId).expect(201);
+
+      const second = await generate(token, tournamentId);
+
+      expect(second.status).toBe(409);
+      expect((second.body as ErrorBody).code).toBe('bracket_already_exists');
+    });
+
+    it('409 not_enough_teams: a bracket needs at least two teams', async () => {
+      const { token, tournamentId } = await tournamentWithTeams(
+        'bracket-thin',
+        1,
+      );
+
+      const response = await generate(token, tournamentId);
+
+      expect(response.status).toBe(409);
+      expect((response.body as ErrorBody).code).toBe('not_enough_teams');
+      expect((response.body as ErrorBody).details).toMatchObject({
+        teamCount: 1,
+      });
+    });
+
+    it('409 invalid_seeding: seeds with a gap are the club to fix, not the API to guess', async () => {
+      const { token, tournamentId, teams } = await tournamentWithTeams(
+        'bracket-gap',
+        4,
+      );
+      await seed(token, tournamentId, teams[0].id, 1);
+      await seed(token, tournamentId, teams[1].id, 3);
+
+      const response = await generate(token, tournamentId);
+
+      expect(response.status).toBe(409);
+      expect((response.body as ErrorBody).code).toBe('invalid_seeding');
+      expect((response.body as ErrorBody).details).toEqual({ seeds: [1, 3] });
+
+      // Y el torneo sigue abierto: la transacción se deshizo entera, no dejó
+      // el torneo arrancado sin cuadro.
+      const tournament = await request(app.getHttpServer())
+        .get(`/tournaments/${tournamentId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect((tournament.body as TournamentResponseBody).status).toBe('open');
+    });
+
+    it('never exposes a dni through the bracket', async () => {
+      const { token, tournamentId } = await tournamentWithTeams(
+        'bracket-no-dni',
+        2,
+      );
+
+      const response = await generate(token, tournamentId).expect(201);
+
+      const raw = JSON.stringify(response.body);
+      for (const dni of createdDnis) {
+        expect(raw).not.toContain(dni);
+      }
+      expect(raw).not.toContain('clubId');
+    });
+
+    it('404 tournament_not_found: another club cannot generate a bracket it does not own', async () => {
+      const { tournamentId } = await tournamentWithTeams('bracket-tenancy', 2);
+      const clubB = await createClub('bracket-tenancy-other');
+
+      const response = await generate(clubB.token, tournamentId);
+
+      expect(response.status).toBe(404);
+      expect((response.body as ErrorBody).code).toBe('tournament_not_found');
     });
   });
 
