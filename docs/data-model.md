@@ -2,7 +2,7 @@
 
 _ERD de referencia para la fase 1. Las decisiones que lo sustentan están en [decisions.md](./decisions.md) (identidad, tenancy, billing), el alcance en [product-brief.md](./product-brief.md), y la guía operativa de Postgres/Prisma en [database.md](./database.md)._
 
-Este diagrama es la **fuente de documentación** del modelo. La implementación real la owna Prisma (`apps/api/prisma/schema.prisma`); hoy cubre `users` (ver "Prisma 7: setup real" en `decisions.md`), `players` (slice 1) y `clubs` + `subscriptions` (slice 2), y el resto se migra **por slice de feature** con el `db-architect` a medida que cada feature lo necesita (ver [Orden de migración](#orden-de-migración)). Nombres de modelo y enums nativos pueden diferir de lo que se muestra acá; en particular, las columnas de tiempo (`created_at`, etc.) son `timestamptz` en el schema real, no `timestamp`.
+Este diagrama es una **referencia conceptual**: incluye entidades implementadas y extensiones futuras, no un inventario exacto del schema. La implementación real está en [Prisma](../apps/api/prisma/schema.prisma) y sus migraciones; el estado por slice se resume abajo. Los enums y campos completos se consultan allí; las columnas de tiempo usan `timestamptz`, no `timestamp`. El PNG `dupa-erd.drawio.png` se conserva solo como histórico y no representa el modelo vigente.
 
 ## Diagrama
 
@@ -118,7 +118,7 @@ Un slice es el grupo mínimo de tablas que hace funcionar una feature de punta a
 | 1 · Jugadores | `players` ✅                                          | 0          | alcance 1: registro/alta de jugador + dedup              |
 | 2 · Tenant    | `clubs` ✅, `subscriptions` ✅                        | 0          | guard de tenancy, cuenta de organizador                  |
 | 3 · Torneo    | `tournaments` ✅, `teams` ✅                          | 1, 2       | alcance 2: crear torneo e inscribir duplas               |
-| 4 · Llave     | `matches`, `match_sets`                               | 3          | alcance 3 y 4: generar llave, cargar resultados, avanzar |
+| 4 · Llave     | `matches` ✅, `match_sets` ✅                         | 3          | alcance 3 y 4: generar llave, cargar resultados, avanzar |
 | Fase 2        | `courts` + `matches.court_id`, `matches.scheduled_at` | 4          | programación de partidos                                 |
 | Fase 3        | `payment_events` ✅                                   | 2          | upgrade `free → basic`/`pro` con Mercado Pago            |
 
@@ -128,6 +128,8 @@ Notas sobre el orden:
 - **Las columnas de fase 2 no se migran con su tabla.** `matches` entra en el slice 4 sin `court_id` ni `scheduled_at`; agregar después un FK nullable y su índice es una migración trivial.
 - **Las migraciones en paralelo se pisan.** Con una branch por tarea, dos migraciones creadas al mismo tiempo se aplican fuera de orden y `migrate dev` pide reset en local. Si hay dos PRs tocando `prisma/`, el segundo rebasa sobre `main` y regenera su migración antes de mergear.
 - **`payment_events` es la única tabla migrada por adelantado, y es una excepción consciente a la regla de arriba.** Depende solo del slice 2 y no bloquea nada del 3 ni del 4. Se adelantó porque su forma no es una apuesta: sale del contrato publicado de las notificaciones de Mercado Pago (`id`, `type`, `action`, `data.id`), y la columna `payload` guarda el original entero, así que la integración puede leer lo que necesite sin que haya hecho falta adivinar columnas hoy. El costo asumido es que vive migrada y sin código que la use hasta que la fase se abra. Lo que **sí** falta decidir con la integración son las columnas que `subscriptions` necesite para atarse a la preaprobación; esas entran con el código que las escribe.
+
+Las marcas ✅ indican tablas migradas, no funcionalidades completas. El slice 4 tiene schema y operaciones de la llave; el alcance funcional se verifica en [el contexto de API](../apps/api/AGENTS.md).
 
 ## Diccionario de tablas
 
@@ -146,13 +148,13 @@ Notas sobre el orden:
 - **`matches`** — partido de la llave. `next_match_id` + `next_slot` modelan el avance automático del bracket. `court_id` / `scheduled_at` son de fase 2.
 - **`match_sets`** — resultado por set de un partido.
 
-### Fase 2 (schema desde el día uno)
+### Fase 2 (planificada, todavía sin migrar)
 
 - **`courts`** — canchas del club, para la programación de partidos (fase 2).
 
 ## Notas de diseño
 
 - **IDs como `UUID` v7.** Claves primarias y foráneas son UUID, no enteros autoincrementales. Se usa **UUIDv7** (time-ordered) para que los inserts caigan casi secuenciales y no fragmenten el índice del PK como haría el v4 aleatorio. Los genera la app vía Prisma (`@default(uuid(7))`), no la base — el Postgres del compose es 17 y `uuidv7()` nativo recién existe en PG 18. Ver [decisions.md](./decisions.md).
-- **`club_id` denormalizado** en todas las tablas de club (`tournaments`, `teams`, `matches`, `courts`) e indexado. Cumple el invariante de tenancy y deja que cada guard filtre por `club_id` directo, sin joins. Es seguro porque el club de una fila nunca cambia. En las tablas que **no** cuelgan del club directamente, esa copia se valida con una **FK compuesta** contra la tabla de la que se copió, para que no pueda desincronizarse: `teams(tournament_id, club_id)` → `tournaments(id, club_id)`. `matches` y `match_sets` siguen el mismo patrón cuando entren en el slice 4. Ver la entrada del 2026-09-02 en [decisions.md](./decisions.md).
+- **`club_id` denormalizado** en todas las tablas de club (`tournaments`, `teams`, `matches`, `courts`) e indexado. Cumple el invariante de tenancy y deja que cada guard filtre por `club_id` directo, sin joins. Es seguro porque el club de una fila nunca cambia. En las tablas que **no** cuelgan del club directamente, esa copia se valida con una **FK compuesta** contra la tabla de la que se copió, para que no pueda desincronizarse: `teams(tournament_id, club_id)` → `tournaments(id, club_id)`. `matches(tournament_id, club_id)` → `tournaments(id, club_id)` y `match_sets(match_id, club_id)` → `matches(id, club_id)` ya siguen el mismo patrón. Ver la entrada del 2026-09-02 en [decisions.md](./decisions.md).
 - **Enums como `varchar`** en el DDL de referencia para que draw.io los importe; en Prisma serán enums nativos.
 - **Rol / multi-staff**: cuando exista staff con permisos (owner/admin/planillero), vive en un futuro `club_memberships (user_id, club_id, role)`, no en `users`. Fuera del MVP.

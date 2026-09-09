@@ -32,7 +32,7 @@ Nombre en minúscula y con guiones, describiendo la tarea y no el archivo: `feat
 ```bash
 git status                  # qué cambió
 git diff                    # revisá antes de agregar
-git add src/tournaments/    # agregá por path, no con "git add ." a ciegas
+git add apps/api/src/tournaments/    # agregá por path, no con "git add ." a ciegas
 git commit
 ```
 
@@ -41,7 +41,7 @@ git commit
 Para el mensaje, `git commit` sin `-m` te abre el editor y te deja escribir cuerpo, que es donde va el _por qué_:
 
 ```
-add automatic bracket generation
+feat(bracket): add automatic bracket generation
 
 Los brackets se generan al cerrar inscripciones y no al crear el torneo,
 porque hasta ese momento la cantidad de parejas puede cambiar.
@@ -69,11 +69,13 @@ git add pnpm-lock.yaml
 ### 5. Antes de abrir el PR
 
 ```bash
-# el lint exacto que corre la CI (el script "lint" del paquete NO es el mismo)
+pnpm --filter api run typecheck
+# Lint exacto de CI (el script "lint" del paquete no es el mismo)
 pnpm --filter api exec eslint "{src,test}/**/*.ts" --max-warnings 0
 pnpm --filter web run lint
 
 pnpm run build
+pnpm --filter api run openapi:check
 pnpm run test
 
 pnpm run db:up          # los e2e corren contra Postgres real, no mockeado
@@ -99,7 +101,7 @@ El `-u` la primera vez enlaza la rama local con la remota; después alcanza con 
 Si preferís escribir la descripción a mano (qué / por qué / cómo probarlo):
 
 ```bash
-gh pr create --base main --title "add automatic bracket generation" --body "..."
+gh pr create --base main --title "feat(bracket): add automatic bracket generation" --body "..."
 ```
 
 Trabajo a medias que querés mostrar:
@@ -113,8 +115,8 @@ gh pr create --draft
 Los cambios que pidan en el review son commits nuevos en la misma rama:
 
 ```bash
-git add .
-git commit -m "extract seeding logic to its own method"
+git add apps/api/src/tournaments/
+git commit -m "refactor(bracket): extract seeding logic"
 git push
 ```
 

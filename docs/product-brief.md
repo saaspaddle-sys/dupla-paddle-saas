@@ -13,7 +13,7 @@ SaaS para que clubes de pádel organicen torneos: el club arma el torneo con sus
 
 ## Modelo de negocio
 
-- **Paga el organizador** (el dueño de la cuenta), por suscripción; el plan define las cuotas de uso (p. ej. cantidad de torneos). En el MVP una cuenta = **un club**; que un mismo dueño maneje varios clubes queda para más adelante. Cobro **manual** al principio — cada cuenta se activa a mano y se factura por afuera; Mercado Pago se integra cuando el producto esté validado (fase 3).
+- **Paga el organizador** (el dueño de la cuenta), por suscripción; el plan define las cuotas de uso (p. ej. cantidad de torneos). En el MVP una cuenta = **un club**; que un mismo dueño maneje varios clubes queda para más adelante. Cobro de los planes pagos **manual** al principio — los clubes nacen en el plan gratuito activo y los upgrades pagos se gestionan por fuera; Mercado Pago se integra cuando el producto esté validado (fase 3).
 - **Todo club arranca gratis.** El plan `free` da **una llave activa**: alcanza para correr una categoría entera de punta a punta y ver el producto funcionando. `basic` (3 llaves) y `pro` (12) son los pagos. El techo no vence por tiempo, vence por alcance — aparece cuando el club quiere correr su fin de semana real, que son tres llaves. Ver la entrada del 2026-09-03 en [decisions.md](./decisions.md).
 - **Gratuito para jugadores**: para el jugador todo es gratis, tenga cuenta o no. La **vista pública es anónima** (sin login), con filtros (torneos, llaves, jugadores). Además, el jugador **puede registrarse e iniciar sesión** para tener su perfil — el login habilita la cuenta de jugador, pero **no** es requisito para ver la vista pública.
 
@@ -33,7 +33,7 @@ SaaS para que clubes de pádel organicen torneos: el club arma el torneo con sus
 4. Carga de resultados y avance automático de la llave
 5. Vista pública sin login: torneos, llaves y jugadores con filtros
 
-**Fase 2 (el schema la contempla desde el día uno; la UI no existe todavía):**
+**Fase 2 (alcance planificado; canchas y horarios se migran con la feature):**
 
 - Inscripción online — el jugador logueado se anota solo a un torneo puntual desde la vista pública. Distinto de tener cuenta (eso ya está en fase 1); acá se agrega el flujo de auto-inscripción a un torneo, con la identidad de jugador ya resuelta desde fase 1
 - Canchas y horarios — programación de partidos (colisiones, disponibilidad)
@@ -51,7 +51,7 @@ Las tres preguntas que faltaban, ya resueltas (2026-09-03):
 
 1. **Un club que deja de pagar no pierde nada de lo que ya tiene.** Vuelve a `free`, pero la degradación aplica **solo a lo que se cree de ahí en adelante**: los torneos en curso siguen vivos hasta que terminen, con sus jugadores anotados y sus resultados. Bajar de plan nunca borra ni cierra un torneo. En la práctica el club queda por encima de su cuota hasta que la vaya liberando sola, y eso es correcto — la alternativa es romperle un torneo a jugadores que no tienen nada que ver con la factura.
 2. **Cobro mensual, y la cuota sigue contando llaves activas simultáneas.** Son dos ejes distintos y solo cambia el primero: se paga todos los meses, pero el número del plan sigue siendo "cuántas llaves a la vez", no "cuántas por mes". Un torneo de pádel termina, así que una cuota mensual castigaría justo al club que organiza todos los fines de semana — el mejor cliente sería el primero en chocarse contra la pared. La cuota simultánea no limita cuánto se usa el producto, limita cuánta complejidad concurrente sostiene, que es lo que realmente cuesta. No hay nada que migrar: ya funciona así.
-3. **El webhook se vuelve idempotente con una bitácora de eventos propia.** Mercado Pago reintenta cada 15 minutos hasta recibir un `200`/`201`, y después del tercer intento espacia pero sigue: los duplicados están garantizados, no son un caso raro. La tabla `payment_events` guarda el id de notificación con un `UNIQUE` de base —no un `SELECT` previo, que bajo concurrencia dejaría pasar dos— y el payload crudo. Ya está migrada; el handler se escribe cuando la fase se abra.
+3. **El webhook se vuelve idempotente con una bitácora de eventos propia.** `payment_events` ya está migrada; el handler corresponde a fase 3. El diseño y sus garantías se documentan en [el modelo de datos](./data-model.md#identidad-y-billing) y en [las decisiones](./decisions.md#billing-fase-3).
 
 **Fuera de alcance por ahora:**
 

@@ -9,7 +9,7 @@ Desde la raíz del repo:
 ```bash
 pnpm install                 # incluye postinstall → prisma generate
 cp .env.example .env         # DATABASE_URL ya apunta al compose de abajo
-pnpm run db:up                # Postgres 17 en :5432 (+ Adminer en :8080)
+pnpm run db:up                # solo Postgres 17 en :5432
 pnpm run db:migrate           # aplica apps/api/prisma/migrations
 ```
 
@@ -25,11 +25,11 @@ pnpm --filter api run test:e2e
 
 ### `compose.yml` (raíz)
 
-`postgres:17` con credenciales `dupla`/`dupla`, expuesto en `:5432`. Los datos viven en el volumen `dupla-pgdata`, así que sobreviven a `pnpm run db:down` — para arrancar de cero hay que borrar el volumen a mano. Incluye Adminer (GUI de DB) opcional en `:8080`, con `depends_on` al healthcheck de Postgres.
+`postgres:17` con credenciales `dupla`/`dupla`, expuesto en `:5432`. Los datos viven en el volumen `dupla-pgdata`, así que sobreviven a `pnpm run db:down` — para arrancar de cero hay que borrar el volumen a mano. Incluye Adminer (GUI de DB) opcional en `:8080`, con `depends_on` al healthcheck de Postgres. Se inicia por separado con `docker compose up -d adminer`; `db:up` solo inicia Postgres.
 
 ### `.env` / `.env.example` (raíz)
 
-`DATABASE_URL` es la única env var que necesita la API, y vive en el `.env` de la **raíz** del monorepo — no hay un `.env` por paquete. El `.env` no se commitea; `.env.example` sí, y es lo que copiás en el setup local.
+La API requiere `DATABASE_URL` y `JWT_SECRET`, definidos en el `.env` de la **raíz** del monorepo. Prisma utiliza `DATABASE_URL`; la autenticación exige `JWT_SECRET` al iniciar la API. Las variables opcionales se documentan en [`.env.example`](../.env.example), que se copia para el entorno local. El `.env` no se versiona.
 
 ### `apps/api/prisma.config.ts`
 
@@ -135,7 +135,7 @@ Los e2e (`test/*.e2e-spec.ts`) corren contra Postgres real — no hay provider d
 
 ## Cómo corre en CI
 
-El job `api` de `.github/workflows/ci.yml` levanta un service container `postgres:17` con el mismo healthcheck que el compose local, y define `DATABASE_URL` a nivel de job. Orden de los pasos: check de migraciones inmutables → `prisma generate` (explícito, no solo confiado al `postinstall` — pnpm restaurando desde su store cacheado no siempre lo dispara) → lint → build → `prisma migrate deploy` → check de drift → unit tests → e2e tests.
+El job `api` de `.github/workflows/ci.yml` levanta un service container `postgres:17` con el mismo healthcheck que el compose local, y define `DATABASE_URL` y `JWT_SECRET` a nivel de job. Orden de los pasos: check de migraciones inmutables → `prisma generate` (explícito, no solo confiado al `postinstall` — pnpm restaurando desde su store cacheado no siempre lo dispara) → typecheck → lint → build → check de OpenAPI → `prisma migrate deploy` → check de drift → unit tests → e2e tests.
 
 `migrate deploy` y no `migrate dev`: aplica las migraciones existentes sin generar una nueva ni pedir input, y es el comando pensado para CI/producción. **Lo que `migrate deploy` no hace es comparar contra `schema.prisma`** — solo aplica el historial de migraciones y verifica los checksums de lo ya aplicado. En una base recién creada como la de CI no hay historial previo, así que un `schema.prisma` editado sin su migración le pasa por al lado. Por eso hay un paso aparte:
 
