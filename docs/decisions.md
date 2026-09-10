@@ -129,6 +129,18 @@ Cuando exista ese formato se agrega una columna `phase` (`group`/`knockout`), qu
 
 <a id="billing-fase-3"></a>
 
+## 2026-09-09 — Mercado Pago desde el release inicial. Revisa el cobro manual y la fase diferida.
+
+**Contexto**: el enfoque anterior dejaba los upgrades de los clubes para una fase posterior y suponía una activación manual mientras tanto. Ese circuito tiene dos problemas: el estado de una suscripción paga depende de una operación humana y el producto no valida su flujo comercial real desde el comienzo.
+
+**Decisión**:
+
+- **Todo upgrade de `free` a `basic` o `pro` se cobra con Mercado Pago desde el release inicial.** El panel del club inicia el checkout y el webhook, validado e idempotente, es la única autoridad que activa el plan.
+- **No existe cobro ni activación manual.** El plan `free` sigue naciendo `active`; los planes pagos pasan de `pending` a activos solo después de la confirmación del proveedor.
+- La idempotencia, la bitácora `payment_events`, la degradación hacia adelante y la cuota por llaves activas ya definidas siguen vigentes. Esta decisión adelanta la integración al release inicial; no cambia esas garantías.
+
+**Consecuencias**: el release inicial requiere checkout, manejo seguro de credenciales, validación de firma del webhook, persistencia idempotente de eventos y transición atómica de `plan`, `max_tournaments` y `status`. La tabla `payment_events` ya está migrada, pero el código de integración aún no existe. Esta entrada reemplaza, para pagos de suscripciones de clubes, la decisión histórica de **cobro manual, pasarela diferida** del 2026-07-16 y cualquier texto que ubique Mercado Pago exclusivamente en una fase 3.
+
 ## 2026-09-03 — Fase 3: degradación hacia adelante, cuota simultánea con cobro mensual, y `payment_events` para la idempotencia del webhook
 
 **Contexto**: con el plan `free` explícito (entrada de abajo), el upgrade a plan pago pasó de idea vaga a siguiente paso del modelo de negocio, y entró al alcance como fase 3 en `docs/product-brief.md`. Quedaban tres preguntas que había que cerrar **antes** de escribir el webhook, no después. Se cierran acá.
@@ -552,6 +564,8 @@ Tres riesgos conocidos, anotados acá para no perderlos de vista mientras se def
 **Consecuencias**: sin costo por usuario ni dependencia de terceros. La identidad de jugadores (fase 2, inscripción online) se diseñará sobre esta misma base.
 
 ## 2026-07-16 — Cobro manual, pasarela diferida
+
+> **Reemplazada para suscripciones de clubes:** Mercado Pago es obligatorio desde el release inicial; ver [Mercado Pago desde el release inicial](#billing-fase-3).
 
 **Decisión**: sin integración de pagos en el MVP. Clubes se activan a mano. Cuando se valide el producto, la pasarela es Mercado Pago (mercado inicial: Argentina).
 
