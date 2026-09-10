@@ -1,5 +1,6 @@
 {
-  "subscription": "basic",
-  "createdTournaments": 3,
-  "usedFields": 7
+  "subscription": "free",
+  "maxTournaments": 1,
+  "createdTournaments": 0,
+  "usedFields": 0
 }

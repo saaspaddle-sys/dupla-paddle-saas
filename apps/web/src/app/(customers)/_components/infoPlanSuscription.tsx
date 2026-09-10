@@ -9,11 +9,10 @@ interface Props {
 
 export default function infoPlanSubscription({ data }: Props) {
   //obtenemos las reglas del plan actual del usuario
-  const currentPlan = PLAN_CONFIGS[data.subscription] ?? PLAN_CONFIGS.basic;
+  const currentPlan = PLAN_CONFIGS[data.subscription] ?? PLAN_CONFIGS.free;
 
   //calculo de uso
-  const tournamentlimitReached =
-    data.createdTournaments >= currentPlan.maxTournaments;
+  const tournamentlimitReached = data.createdTournaments >= data.maxTournaments;
 
   const fieldLimitReached = data.usedFields >= currentPlan.maxFields;
 
@@ -42,9 +41,7 @@ export default function infoPlanSubscription({ data }: Props) {
             <span className="text-gray-400">Torneos Creados al Mes</span>
             <span className="text-white">
               {data.createdTournaments} /{" "}
-              {currentPlan.maxTournaments === Infinity
-                ? "∞"
-                : currentPlan.maxTournaments}
+              {data.maxTournaments === Infinity ? "∞" : data.maxTournaments}
             </span>
           </div>
           <div className="w-full bg-gray-800 rounded-full h-2">
@@ -54,9 +51,7 @@ export default function infoPlanSubscription({ data }: Props) {
               }`}
               style={{
                 width: `${Math.min(
-                  (data.createdTournaments /
-                    (currentPlan.maxTournaments || 1)) *
-                    100,
+                  (data.createdTournaments / (data.maxTournaments || 1)) * 100,
                   100,
                 )}%`,
               }}
