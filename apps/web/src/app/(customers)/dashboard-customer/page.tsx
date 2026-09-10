@@ -19,7 +19,8 @@ async function loadSubscriptionData(): Promise<UserSubscriptionData> {
   try {
     const club = await getCurrentClub(token);
     return {
-      subscription: club.subscription.plan as UserSubscriptionData["subscription"],
+      subscription: club.subscription
+        .plan as UserSubscriptionData["subscription"],
       maxTournaments: club.subscription.maxTournaments,
       // Pendiente: no hay endpoint de torneos/canchas conectado todavía.
       createdTournaments: 0,

@@ -128,7 +128,7 @@ export default function PlayerSidebar() {
         </nav>
       </div>
       {/*boton de para crear un club. redirige a pantalla con form */}
-      <CreateClubButton/>
+      <CreateClubButton />
 
       {/* Footer del Sidebar: Perfil rápido y Cerrar Sesión */}
       <div className="pt-6 border-t border-gray-800/80 space-y-3">

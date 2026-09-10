@@ -23,7 +23,10 @@ export interface Club {
 
 // `POST /clubs`: requiere sesión, y el slug/ownerId los deriva el server —
 // nunca se mandan desde acá (docs/decisions.md, 2026-08-25).
-export function createClub(input: CreateClubInput, token: string): Promise<Club> {
+export function createClub(
+  input: CreateClubInput,
+  token: string,
+): Promise<Club> {
   return apiFetch<Club>("/clubs", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },

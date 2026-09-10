@@ -15,14 +15,14 @@ export default function ClubPlans() {
     /* flex-1 w-full min-h-full fuerza al contenedor a rellenar todo el área del dashboard */
     <div className="flex-1 w-full min-h-full bg-deep-onyx px-4 py-8 sm:px-6 lg:px-8 text-white">
       <div className="max-w-6xl mx-auto space-y-10">
-        
         {/* Encabezado */}
         <div className="max-w-3xl mx-auto text-center">
           <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">
             Elegí el plan para tu club
           </h1>
           <p className="mt-3 text-sm sm:text-base text-gray-400">
-            Empezá gratis, organizá tus torneos y elegí el plan que mejor se adapte a tu club.
+            Empezá gratis, organizá tus torneos y elegí el plan que mejor se
+            adapte a tu club.
           </p>
         </div>
 
@@ -36,7 +36,9 @@ export default function ClubPlans() {
               El organizador paga la suscripción
             </h3>
             <p className="mt-2 text-xs text-gray-400 leading-relaxed">
-              El dueño de la cuenta es quien contrata el plan. El cobro es manual: la activación y la facturación se realizan por afuera de la plataforma.
+              El dueño de la cuenta es quien contrata el plan. El cobro es
+              manual: la activación y la facturación se realizan por afuera de
+              la plataforma.
             </p>
           </div>
 
@@ -45,7 +47,8 @@ export default function ClubPlans() {
               Los jugadores no pagan
             </h3>
             <p className="mt-2 text-xs text-gray-400 leading-relaxed">
-              La inscripción y el acceso a la vista pública son gratuitos para los jugadores, tengan cuenta o no.
+              La inscripción y el acceso a la vista pública son gratuitos para
+              los jugadores, tengan cuenta o no.
             </p>
           </div>
         </div>
@@ -57,17 +60,19 @@ export default function ClubPlans() {
               Una experiencia gratuita para jugadores
             </h2>
             <p className="mt-1 text-xs text-gray-400">
-              Tu club organiza. Tus jugadores consultan, se registran y siguen sus torneos sin costo.
+              Tu club organiza. Tus jugadores consultan, se registran y siguen
+              sus torneos sin costo.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 border-t border-gray-800 pt-4">
             <div>
               <h3 className="font-bold text-xs text-padel-green uppercase tracking-wide">
-                 Vista pública
+                Vista pública
               </h3>
               <p className="mt-1 text-xs text-gray-400 leading-relaxed">
-                Acceso sin login para consultar torneos, llaves y jugadores mediante filtros.
+                Acceso sin login para consultar torneos, llaves y jugadores
+                mediante filtros.
               </p>
             </div>
 
@@ -76,7 +81,8 @@ export default function ClubPlans() {
                 Cuenta de jugador
               </h3>
               <p className="mt-1 text-xs text-gray-400 leading-relaxed">
-                Los jugadores pueden registrarse e iniciar sesión para tener su perfil, pero no es obligatorio para ver la información pública.
+                Los jugadores pueden registrarse e iniciar sesión para tener su
+                perfil, pero no es obligatorio para ver la información pública.
               </p>
             </div>
           </div>

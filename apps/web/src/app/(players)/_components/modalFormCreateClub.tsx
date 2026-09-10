@@ -74,7 +74,10 @@ export default function ModalFormCreateClub({
         </p>
 
         <div className="space-y-1">
-          <label htmlFor="club-name" className="text-xs font-bold text-gray-300">
+          <label
+            htmlFor="club-name"
+            className="text-xs font-bold text-gray-300"
+          >
             Nombre del club
           </label>
           <input

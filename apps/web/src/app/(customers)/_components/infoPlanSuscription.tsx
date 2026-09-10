@@ -12,8 +12,7 @@ export default function infoPlanSubscription({ data }: Props) {
   const currentPlan = PLAN_CONFIGS[data.subscription] ?? PLAN_CONFIGS.free;
 
   //calculo de uso
-  const tournamentlimitReached =
-    data.createdTournaments >= data.maxTournaments;
+  const tournamentlimitReached = data.createdTournaments >= data.maxTournaments;
 
   const fieldLimitReached = data.usedFields >= currentPlan.maxFields;
 
@@ -52,8 +51,7 @@ export default function infoPlanSubscription({ data }: Props) {
               }`}
               style={{
                 width: `${Math.min(
-                  (data.createdTournaments / (data.maxTournaments || 1)) *
-                    100,
+                  (data.createdTournaments / (data.maxTournaments || 1)) * 100,
                   100,
                 )}%`,
               }}
