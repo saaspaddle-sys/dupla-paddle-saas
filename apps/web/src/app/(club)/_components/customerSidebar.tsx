@@ -2,7 +2,9 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useTransition } from "react";
+import { logoutAction } from "@/app/(auth)/login/logout-action";
 
 function MenuIcon({ children }: { children: ReactNode }) {
   return (
@@ -25,11 +27,13 @@ function MenuIcon({ children }: { children: ReactNode }) {
 
 export default function CustomerSidebar() {
   const pathname = usePathname();
+  const router = useRouter(); //permite navegar despues del logout
+  const [isLoggingOut, startLogout] = useTransition(); // permite ejecutar la operacion asuncrona sin bloquear la interface.Tambien proporciona isLoggingOut, que indica si el proceso esta en curso
 
   const menuItems = [
     {
       nombre: "Mi Club",
-      ruta: "/dashboard-customer",
+      ruta: "/club-dashboard",
       icono: (
         <MenuIcon>
           <path d="M3 10.5 12 3l9 7.5" />
@@ -138,27 +142,6 @@ export default function CustomerSidebar() {
           })}
         </nav>
       </div>
-      {/*
-  
-      <div className="mt-auto pt-4">
-        <button className="w-full flex items-center justify-center gap-2 bg-padel-green hover:bg-[#b8e600] text-deep-onyx text-sm font-black py-3 px-4 rounded-2xl shadow-md transition-all cursor-pointer mb-4">
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 4.5v15m7.5-7.5h-15"
-            />
-          </svg>
-          Nuevo Torneo
-        </button>
-      </div>
-          */}
 
       <div className="pt-6 border-t border-gray-800/80 space-y-3">
         <div className="flex items-center gap-3 px-2">
@@ -174,7 +157,14 @@ export default function CustomerSidebar() {
         </div>
 
         <button
+          type="button"
+          disabled={isLoggingOut}
           onClick={() => {
+            startLogout(async () => {
+              await logoutAction(); //elimina la cookie session en el servidor
+              router.replace("/"); //lleva al ususario al inicio
+              router.refresh(); //fuerza a next a volver a leer los datos y cookies actuales
+            });
             // Lógica para cerrar sesión
           }}
           className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer"

@@ -49,5 +49,5 @@ export async function createClubAction(
     };
   }
 
-  redirect("/dashboard-customer");
+  redirect("/club-dashboard");
 }
