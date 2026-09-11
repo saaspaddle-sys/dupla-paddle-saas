@@ -16,7 +16,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ClubScopeGuard } from '../auth/guards/club-scope.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
-import { API_TAGS, JWT_SECURITY_SCHEME } from '../swagger/swagger.setup';
+import { JWT_SECURITY_SCHEME, SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { ClubsService } from './clubs.service';
 import { ClubResponseDto } from './dto/club-response.dto';
 import { CreateClubDto } from './dto/create-club.dto';
@@ -35,7 +35,7 @@ import { UpdateClubDto } from './dto/update-club.dto';
  * reservados (`common/transforms/slug.ts`) es la segunda mitad de esa
  * defensa.
  */
-@ApiTags(API_TAGS.club)
+@ApiTags(SWAGGER_TAGS.clubs)
 @Controller('clubs')
 export class ClubsController {
   constructor(private readonly clubsService: ClubsService) {}

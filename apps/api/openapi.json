@@ -22,7 +22,7 @@
         },
         "summary": "Indica si la API puede alcanzar su base de datos",
         "tags": [
-          "ops"
+          "Operations"
         ]
       }
     },
@@ -60,7 +60,7 @@
         },
         "summary": "Registra un jugador y su cuenta, deduplicando por DNI",
         "tags": [
-          "platform"
+          "Players"
         ]
       }
     },
@@ -101,7 +101,7 @@
         },
         "summary": "Autentica con email y contraseña, y emite un access token",
         "tags": [
-          "platform"
+          "Auth"
         ]
       }
     },
@@ -131,7 +131,7 @@
         ],
         "summary": "Devuelve la identidad del usuario autenticado",
         "tags": [
-          "platform"
+          "Auth"
         ]
       }
     },
@@ -177,7 +177,7 @@
         ],
         "summary": "Crea el club de la cuenta autenticada y su suscripción",
         "tags": [
-          "club"
+          "Clubs"
         ]
       }
     },
@@ -210,7 +210,7 @@
         ],
         "summary": "Devuelve el club de la cuenta autenticada con su suscripción",
         "tags": [
-          "club"
+          "Clubs"
         ]
       },
       "patch": {
@@ -251,7 +251,7 @@
         ],
         "summary": "Actualiza los datos editables del club propio",
         "tags": [
-          "club"
+          "Clubs"
         ]
       }
     },
@@ -300,7 +300,7 @@
         ],
         "summary": "Crea un torneo en el club de la cuenta",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       },
       "get": {
@@ -368,7 +368,7 @@
         ],
         "summary": "Lista los torneos del club, del más nuevo al más viejo, paginados por cursor",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       }
     },
@@ -414,7 +414,7 @@
         ],
         "summary": "Devuelve un torneo del club",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       },
       "patch": {
@@ -471,7 +471,7 @@
         ],
         "summary": "Renombra el torneo y/o cambia su estado (en este slice, solo cancelarlo)",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       }
     },
@@ -533,7 +533,7 @@
         ],
         "summary": "Inscribe una dupla en un torneo abierto",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       },
       "get": {
@@ -580,7 +580,7 @@
         ],
         "summary": "Lista las duplas inscriptas en el torneo, en orden de inscripción. Sin paginación: la lista es acotada por naturaleza (una llave de eliminación directa) y el frontend la necesita entera para dibujar el bracket.",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       }
     },
@@ -651,7 +651,7 @@
         ],
         "summary": "Siembra o desiembra una dupla en un torneo abierto. `seed: null` la devuelve al sorteo; un body vacío no cambia nada y devuelve la representación actual.",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       },
       "delete": {
@@ -700,7 +700,7 @@
         ],
         "summary": "Da de baja una dupla de un torneo abierto (borrado real)",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       }
     },
@@ -746,7 +746,7 @@
         ],
         "summary": "Consulta el cuadro persistido del torneo.",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       },
       "delete": {
@@ -786,7 +786,7 @@
         ],
         "summary": "Borra el cuadro sin resultados y reabre la inscripción. Los byes automáticos no impiden borrarlo.",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       },
       "post": {
@@ -833,7 +833,7 @@
         ],
         "summary": "Sortea y genera el cuadro del torneo, y lo pasa a `in_progress`. Las duplas sembradas van a sus posiciones protegidas y el resto se sortea; los byes caen en las sembradas. Cierra la inscripción: a partir de acá no se pueden agregar ni sacar duplas.",
         "tags": [
-          "club"
+          "Tournaments"
         ]
       }
     },
@@ -895,32 +895,40 @@
         ],
         "summary": "Registra el resultado de un partido y avanza su ganador.",
         "tags": [
-          "club"
+          "Matches"
         ]
       }
     }
   },
   "info": {
     "title": "dupla API",
-    "description": "API de dupla — SaaS de torneos de pádel para clubes.\n\nLos endpoints se agrupan por las tres clases de `docs/api-conventions.md`:\n`club` (JWT de staff, scoping por el club del usuario autenticado), `public`\n(vista gratuita para jugadores, solo lectura y sin auth) y `platform`\n(entidades globales como `Player`, sin `club_id`).",
+    "description": "API de dupla — SaaS de torneos de pádel para clubes.\n\nLos endpoints se agrupan por dominio de negocio. Su clase de acceso es un\ncontrato separado: `club` (JWT de staff y scoping por el club del usuario),\n`public` (solo lectura y sin auth), `platform` (entidades globales sin\n`club_id`) u `ops` (infraestructura).",
     "version": "1.0",
     "contact": {}
   },
   "tags": [
     {
-      "name": "club",
-      "description": "Panel del club. Requiere JWT de staff; el scoping sale del `club_id` del usuario autenticado, nunca del request."
+      "name": "Auth",
+      "description": "Autenticación y sesión de usuarios de la plataforma."
     },
     {
-      "name": "public",
-      "description": "Vista pública para jugadores. Solo lectura, sin auth."
+      "name": "Clubs",
+      "description": "Gestión del club y su suscripción."
     },
     {
-      "name": "platform",
-      "description": "Entidades globales de plataforma (`Player`), sin `club_id`."
+      "name": "Players",
+      "description": "Registro y perfiles globales de jugadores."
     },
     {
-      "name": "ops",
+      "name": "Tournaments",
+      "description": "Torneos, duplas inscriptas y cuadros."
+    },
+    {
+      "name": "Matches",
+      "description": "Partidos y carga de resultados."
+    },
+    {
+      "name": "Operations",
       "description": "Operacionales, para la infraestructura (health checks). Sin auth y sin datos de negocio."
     }
   ],

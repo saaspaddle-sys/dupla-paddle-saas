@@ -13,14 +13,14 @@ import {
 import { ClubId } from '../auth/decorators/club-id.decorator';
 import { ClubScopeGuard } from '../auth/guards/club-scope.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { API_TAGS, JWT_SECURITY_SCHEME } from '../swagger/swagger.setup';
+import { JWT_SECURITY_SCHEME, SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { MatchParamsDto } from './dto/match-params.dto';
 import { MatchResultResponseDto } from './dto/match-result-response.dto';
 import { RecordMatchResultDto } from './dto/record-match-result.dto';
 import { MatchesService } from './matches.service';
 
 /** Recurso propio: evita agregar un segundo nivel debajo de `tournaments`. */
-@ApiTags(API_TAGS.club)
+@ApiTags(SWAGGER_TAGS.matches)
 @Controller('matches')
 export class MatchesController {
   constructor(private readonly matchesService: MatchesService) {}

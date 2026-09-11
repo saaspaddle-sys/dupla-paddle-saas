@@ -11,18 +11,20 @@ export const SWAGGER_PATH = 'docs';
 export const JWT_SECURITY_SCHEME = 'jwt';
 
 /**
- * Las clases de endpoint de `docs/api-conventions.md`. Todo controller declara
- * la suya con `@ApiTags(API_TAGS.x)` — no strings sueltos, que es como el doc termina
+ * Los dominios de negocio de `docs/api-conventions.md`. Todo controller declara
+ * el suyo con `@ApiTags(SWAGGER_TAGS.x)` — no strings sueltos, que es como el doc termina
  * con "tournaments", "Tournaments" y "tournament" como tres tags distintos.
  *
- * `ops` es la cuarta y no es de negocio: endpoints que consume la infraestructura
- * (`/health`), no un usuario ni el frontend.
+ * La clase del endpoint (`club`, `public`, `platform` u `ops`) sigue siendo un
+ * contrato separado: define auth y scoping, no el agrupamiento visual de Swagger.
  */
-export const API_TAGS = {
-  club: 'club',
-  public: 'public',
-  platform: 'platform',
-  ops: 'ops',
+export const SWAGGER_TAGS = {
+  auth: 'Auth',
+  clubs: 'Clubs',
+  players: 'Players',
+  tournaments: 'Tournaments',
+  matches: 'Matches',
+  operations: 'Operations',
 } as const;
 
 /**
@@ -34,10 +36,10 @@ const API_VERSION = '1.0';
 const API_DESCRIPTION = [
   'API de dupla — SaaS de torneos de pádel para clubes.',
   '',
-  'Los endpoints se agrupan por las tres clases de `docs/api-conventions.md`:',
-  '`club` (JWT de staff, scoping por el club del usuario autenticado), `public`',
-  '(vista gratuita para jugadores, solo lectura y sin auth) y `platform`',
-  '(entidades globales como `Player`, sin `club_id`).',
+  'Los endpoints se agrupan por dominio de negocio. Su clase de acceso es un',
+  'contrato separado: `club` (JWT de staff y scoping por el club del usuario),',
+  '`public` (solo lectura y sin auth), `platform` (entidades globales sin',
+  '`club_id`) u `ops` (infraestructura).',
 ].join('\n');
 
 /**
@@ -69,19 +71,15 @@ export function buildSwaggerDocument(app: INestApplication): OpenAPIObject {
       JWT_SECURITY_SCHEME,
     )
     .addTag(
-      API_TAGS.club,
-      'Panel del club. Requiere JWT de staff; el scoping sale del `club_id` del usuario autenticado, nunca del request.',
+      SWAGGER_TAGS.auth,
+      'Autenticación y sesión de usuarios de la plataforma.',
     )
+    .addTag(SWAGGER_TAGS.clubs, 'Gestión del club y su suscripción.')
+    .addTag(SWAGGER_TAGS.players, 'Registro y perfiles globales de jugadores.')
+    .addTag(SWAGGER_TAGS.tournaments, 'Torneos, duplas inscriptas y cuadros.')
+    .addTag(SWAGGER_TAGS.matches, 'Partidos y carga de resultados.')
     .addTag(
-      API_TAGS.public,
-      'Vista pública para jugadores. Solo lectura, sin auth.',
-    )
-    .addTag(
-      API_TAGS.platform,
-      'Entidades globales de plataforma (`Player`), sin `club_id`.',
-    )
-    .addTag(
-      API_TAGS.ops,
+      SWAGGER_TAGS.operations,
       'Operacionales, para la infraestructura (health checks). Sin auth y sin datos de negocio.',
     )
     .build();
@@ -111,7 +109,7 @@ export function setupSwagger(app: INestApplication): string | null {
     swaggerOptions: {
       // Mantiene el token entre reloads: sin esto hay que pegarlo de nuevo en cada F5.
       persistAuthorization: true,
-      tagsSorter: 'alpha',
+      // Sin sorter: Swagger UI conserva el orden explícito de las tags del documento.
       operationsSorter: 'alpha',
       displayRequestDuration: true,
     },
