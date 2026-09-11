@@ -7,4 +7,5 @@ allowBuilds:
   "@scarf/scarf": false
   prisma: true
   sharp: true
+  styled-components: set this to true or false
   unrs-resolver: true

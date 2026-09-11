@@ -4,8 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { logoutAction } from "@/app/(auth)/login/logout-action";
+import CreateClubButton from "./createClubButton";
 
-export default function PlayerSidebar() {
+interface PlayerSidebarProps {
+  hasClub: boolean;
+}
+
+export default function PlayerSidebar({ hasClub }: PlayerSidebarProps) {
   const pathname = usePathname();
   const router = useRouter(); //permite navegar despues del logout
   const [isLoggingOut, startLogout] = useTransition(); // permite ejecutar la operacion asuncrona sin bloquear la interface.Tambien proporciona isLoggingOut, que indica si el proceso esta en curso
@@ -89,7 +94,7 @@ export default function PlayerSidebar() {
   ];
 
   return (
-    <aside className="w-64 bg-deep-onyx text-white min-h-screen flex flex-col justify-between p-5 border-r border-gray-800">
+    <aside className="w-64 bg-deep-onyx text-white h-screen flex flex-col justify-between p-5 border-r border-gray-800 overflow-hidden">
       <div className="space-y-8">
         {/* Identificador / Logo de la App */}
         <div className="px-2 pt-2">
@@ -126,6 +131,8 @@ export default function PlayerSidebar() {
           })}
         </nav>
       </div>
+      {/*boton de para crear un club, o ir al propio si ya tiene uno */}
+      <CreateClubButton hasClub={hasClub} />
 
       {/* Footer del Sidebar: Perfil rápido y Cerrar Sesión */}
       <div className="pt-6 border-t border-gray-800/80 space-y-3">

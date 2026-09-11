@@ -1,23 +1,26 @@
 "use client";
 
-import React from "react";
-import ActividadJugadoresDos from "../_components/actividadJuagadoresDos";
-import UltimasInscripciones from "../_components/ultimasIncripciones";
+import { useState } from "react";
+import ActividadJugadoresDos from "./actividadJuagadoresDos";
+import UltimasInscripciones from "./ultimasIncripciones";
 import inscripcionesData from "../data/inscripcionesData.json";
-import NextTournament from "../_components/nextTournament";
-import planSubscriptionClub from "../data/planSubscriptionClub.json";
-import InfoPlanSubscription from "../_components/infoPlanSuscription";
+import NextTournament from "./nextTournament";
+import InfoPlanSubscription from "./infoPlanSuscription";
+import CreateTournamentModal from "../dashboard/torneos/component/createTournamentModal";
 import type { UserSubscriptionData } from "../data/types/suscription";
 
-const subscriptionData: UserSubscriptionData = {
-  ...planSubscriptionClub,
-  subscription:
-    planSubscriptionClub.subscription as UserSubscriptionData["subscription"],
-};
+interface Props {
+  subscriptionData: UserSubscriptionData;
+}
 
-export default function DashboardOverview() {
+// Parte interactiva del dashboard: `page.tsx` (Server Component) trae los
+// datos reales del club y se los pasa acá como prop.
+export default function DashboardOverviewClient({ subscriptionData }: Props) {
+  const [isCreateTournamentModalOpen, setIsCreateTournamentModalOpen] =
+    useState(false);
+
   return (
-    <div className="w-full min-h-screen bg-[#121417] text-white p-6 md:p-8 space-y-6">
+    <div className="w-full min-h-screen bg-admin-panel text-white p-6 md:p-8 space-y-6">
       {/* Top Navigation */}
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-gray-800/80">
         <nav className="flex items-center gap-6 text-xs font-bold text-gray-400">
@@ -63,10 +66,13 @@ export default function DashboardOverview() {
             Panel de Control - Mi Club
           </h1>
           <p className="text-xs font-semibold text-gray-400 mt-1">
-            Martes, 24 de Octubre 2023
+            Martes, 24 de Octubre 2023 modificar para que actualize sola
           </p>
         </div>
-        <button className="flex items-center gap-2 bg-padel-green hover:bg-[#b8e600] text-deep-onyx font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer">
+        <button
+          onClick={() => setIsCreateTournamentModalOpen(true)}
+          className="flex items-center gap-2 bg-padel-green hover:bg-[#b8e600] text-deep-onyx font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
+        >
           <svg
             className="w-4 h-4"
             fill="none"
@@ -83,6 +89,11 @@ export default function DashboardOverview() {
           CREAR TORNEO
         </button>
       </div>
+
+      <CreateTournamentModal
+        isOpen={isCreateTournamentModalOpen}
+        onClose={() => setIsCreateTournamentModalOpen(false)}
+      />
 
       {/* KPIs Grid Top */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
