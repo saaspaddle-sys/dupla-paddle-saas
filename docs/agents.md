@@ -1,10 +1,10 @@
-# Guía de trabajo con los agentes — dupla
+# Guía de agentes de Claude Code — dupla
 
 Cómo usamos los subagentes de `.claude/agents/` para que el trabajo salga rápido **y** revisable. Complementa `docs/workflow.md` (ramas, PRs, merges): ahí está el proceso del equipo, acá está cómo delegar bien dentro de ese proceso.
 
 ## Lo primero: qué es un agente
 
-Un agente es un rol con un prompt fijo, un set de herramientas acotado y **contexto propio que arranca en cero**. No ve tu conversación, no recuerda lo que hiciste hace diez minutos, y no habla con los otros agentes. Todo lo que necesita saber tiene que estar en tres lugares:
+Esta guía describe los roles de `.claude/agents/` para Claude Code, no un contrato universal de subagentes. El contexto disponible depende de la herramienta y de cómo se inicia la tarea. Para estos roles, entregar explícitamente el objetivo, las rutas y los resultados necesarios:
 
 1. El `CLAUDE.md` de la raíz y el `AGENTS.md` del paquete que estés tocando — se cargan solos.
 2. Su propio archivo en `.claude/agents/`, más los docs que ese archivo le mande a leer.
@@ -47,7 +47,7 @@ Reglas que valen para todos:
 
 ## Contexto entre agentes: el handoff es tuyo
 
-Los agentes no se pasan información entre ellos. Vos sos el cable.
+No asumir que el siguiente agente recibió el resultado del anterior. El handoff debe incluir las rutas o los resultados que necesita, independientemente de los mecanismos de comunicación de la herramienta.
 
 El caso concreto que más se repite: `api-designer` produce una spec, y quien implementa la necesita. **Guardá la spec en un archivo** (por ejemplo `docs/specs/inscripciones.md`, o pegala en la descripción del PR) y referenciá esa ruta en el siguiente pedido. Reescribirla de memoria en el prompt garantiza que se pierda la mitad de las decisiones — que es justo la parte que hacía valiosa la spec.
 
@@ -58,7 +58,7 @@ Mismo criterio con `debugger`: su reporte de causa raíz va al PR. Sirve tanto a
 El orden está en `docs/workflow.md` y no lo repetimos acá. Lo que importa sobre los agentes en ese ciclo:
 
 - **`api-designer` va antes de escribir código, no después.** Su valor es que dos personas implementando features distintas produzcan APIs que se parezcan. Corrido después, es un comentario de estilo tardío.
-- **`code-reviewer` va antes de abrir el PR, con el trabajo ya commiteado** en tu rama — lee `git diff main...HEAD`. Si lo corrés con todo sin commitear el diff sale sucio y la revisión pierde precisión.
+- **`code-reviewer` va antes de abrir el PR.** Su prompt admite `git diff` para cambios locales y `git diff main...HEAD` para commits de una rama. Indicar qué cambios debe revisar; si hay trabajo local y commits, ambos forman parte del alcance y un único diff puede omitir una parte.
 - **`code-reviewer` no reemplaza el review humano.** Es al revés: le saca al humano el trabajo mecánico (DTOs sin validar, guards faltantes, `club_id` mal scopeado) para que use sus quince minutos en la única pregunta que la máquina no contesta bien: _¿es esta la solución correcta al problema?_
 - **Ante un bug, `debugger` primero.** El atajo de "ya sé qué es, lo arreglo directo" es el que produce fixes sobre el síntoma. Si de verdad ya sabés cuál es la causa, arreglalo y listo — pero entonces escribí el test de regresión igual.
 

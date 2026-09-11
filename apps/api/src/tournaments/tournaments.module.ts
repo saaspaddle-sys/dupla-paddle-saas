@@ -6,6 +6,8 @@ import { BracketController } from './bracket.controller';
 import { BRACKET_SHUFFLE, BracketService } from './bracket.service';
 import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
+import { MatchesController } from './matches.controller';
+import { MatchesService } from './matches.service';
 import { TournamentsController } from './tournaments.controller';
 import { TournamentsService } from './tournaments.service';
 
@@ -32,11 +34,17 @@ import { TournamentsService } from './tournaments.service';
  */
 @Module({
   imports: [PrismaModule, AuthModule],
-  controllers: [TournamentsController, TeamsController, BracketController],
+  controllers: [
+    TournamentsController,
+    TeamsController,
+    BracketController,
+    MatchesController,
+  ],
   providers: [
     TournamentsService,
     TeamsService,
     BracketService,
+    MatchesService,
     // El barajado del sorteo entra por DI y no como un import directo adentro
     // de `BracketService`. Es lo que permite fijarlo en un test —con
     // `cryptoShuffle` adentro, afirmar dónde cayó una dupla sería afirmar

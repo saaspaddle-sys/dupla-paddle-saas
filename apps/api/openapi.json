@@ -836,6 +836,68 @@
           "club"
         ]
       }
+    },
+    "/matches/{matchId}/result": {
+      "patch": {
+        "operationId": "Matches_recordResult",
+        "parameters": [
+          {
+            "name": "matchId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordMatchResultDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchResultResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros o resultado inválidos (`validation`)."
+          },
+          "401": {
+            "description": "Sin sesión válida (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra un club (`club_required`)."
+          },
+          "404": {
+            "description": "El partido no existe o es de otro club (`match_not_found`)."
+          },
+          "409": {
+            "description": "El torneo no está en curso, el partido no está listo o ya terminó, o el resultado no es consistente (`tournament_not_in_progress`, `match_not_ready`, `match_already_finished`, `invalid_match_result`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Registra el resultado de un partido y avanza su ganador.",
+        "tags": [
+          "club"
+        ]
+      }
     }
   },
   "info": {
@@ -1601,6 +1663,112 @@
           "bracketSize",
           "roundCount",
           "byeCount"
+        ]
+      },
+      "MatchSetScoreDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "super_tiebreak"
+            ]
+          },
+          "teamAGames": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 99
+          },
+          "teamBGames": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 99
+          },
+          "teamATiebreak": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 99
+          },
+          "teamBTiebreak": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 99
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "RecordMatchResultDto": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "enum": [
+              "normal",
+              "walkover",
+              "retirement"
+            ],
+            "type": "string"
+          },
+          "winnerTeamId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sets": {
+            "minItems": 1,
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MatchSetScoreDto"
+            }
+          }
+        },
+        "required": [
+          "outcome",
+          "winnerTeamId"
+        ]
+      },
+      "MatchResultResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "finished"
+            ],
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "normal",
+              "walkover",
+              "retirement",
+              "bye"
+            ],
+            "type": "string"
+          },
+          "winnerTeamId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MatchSetScoreDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "outcome",
+          "winnerTeamId",
+          "sets"
         ]
       }
     }

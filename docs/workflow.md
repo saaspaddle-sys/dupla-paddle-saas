@@ -23,7 +23,7 @@ Este archivo tiene las **reglas**. Los **comandos** en orden — el ciclo comple
 
 ## Commits
 
-- Mensajes en minúscula, descriptivos: `fix duplicate player detection on csv import` y no `fix` ni `cambios`.
+- Usar Conventional Commits con un mensaje descriptivo: `fix(players): prevent duplicate player registration`, no `fix` ni `cambios`. No añadir atribución de IA ni trailers `Co-Authored-By`.
 - El mensaje dice el **por qué** cuando no es obvio — el código ya dice el qué.
 - Commits atómicos dentro de la rama; con squash merge no hace falta obsesionarse, pero cada commit debería compilar.
 
@@ -42,6 +42,8 @@ Este archivo tiene las **reglas**. Los **comandos** en orden — el ciclo comple
 - Si cambiás una convención de código, actualizá `CLAUDE.md` o el agente correspondiente en el mismo PR — si no, los agentes van a seguir imponiendo la convención vieja.
 
 ## El ciclo de una feature con los agentes
+
+Los roles de esta sección corresponden a `.claude/agents/` en Claude Code. Para otras herramientas, consultar sus instrucciones activas; la política de ramas, PRs y revisión humana sigue siendo común al equipo.
 
 1. `api-designer` produce la spec (módulo, endpoints, DTOs, errores) → se comparte con el equipo antes de escribir código.
 2. Si toca schema: `db-architect` diseña tablas y migración.

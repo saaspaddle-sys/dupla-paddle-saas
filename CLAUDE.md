@@ -23,7 +23,7 @@ Dos excepciones, ambas deliberadas y ya decididas en `docs/decisions.md`: las **
 
 ## Estado actual
 
-Las decisiones en `docs/decisions.md` están tomadas pero en su mayoría no implementadas todavía. `apps/web` sigue siendo su scaffold de fábrica, sin hablar con la API. `apps/api` va por el slice 2 de `docs/data-model.md`: tiene `users`, `players`, `clubs` y `subscriptions` migradas, auth con Passport + JWT, y el guard de tenancy cableado. Todavía no existe ninguna tabla con `club_id` — la primera es `tournaments`, en el slice 3. No asumas que el resto de esa infraestructura ya existe: verificá antes de importarla, y creala como parte de la feature que la necesite por primera vez. Los detalles están en el archivo de cada paquete.
+El índice de documentación está en `docs/README.md`. El alcance de producto no equivale a implementación completa: consultar `apps/api/AGENTS.md` y `apps/web/docs/README.md` para el detalle de cada paquete. La API ya tiene autenticación, tenancy, torneos, duplas y operaciones de la llave. El schema y las migraciones versionadas son la referencia de las entidades existentes; no inferir funcionalidades entregadas a partir de una tabla ni de cambios locales sin integrar.
 
 ## Workflow del equipo
 

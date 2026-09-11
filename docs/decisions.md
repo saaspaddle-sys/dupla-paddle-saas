@@ -1,6 +1,18 @@
 # Decisiones técnicas — dupla
 
-Una entrada por decisión, la más nueva arriba de su tema. Las entradas no se editan ni se borran: si una decisión se revierte, se agrega una entrada nueva que la reemplaza y se linkea a la vieja.
+Una entrada por decisión, la más nueva arriba de su tema. El texto histórico de las entradas no se reescribe ni se borra: si una decisión se revierte, se agrega una entrada nueva y se enlazan ambas mediante notas de estado.
+
+## Cómo consultar este registro
+
+Este archivo conserva decisiones históricas, no una lista de funcionalidades entregadas. Las reglas vigentes se consultan en [API](./api-conventions.md), [workflow](./workflow.md) y [producto](./product-brief.md).
+
+| Tema                   | Entrada de referencia               |
+| ---------------------- | ----------------------------------- |
+| Plan gratuito y cuotas | [Plan free](#billing-vigente)       |
+| Registro e identidad   | [Registro único](#registro-vigente) |
+| Autenticación y sesión | [Login API](#sesion-vigente)        |
+| Límites de los PRs     | [PRs por paquete](#prs-vigente)     |
+| Identificadores        | [UUIDv7](#ids-vigentes)             |
 
 ## 2026-09-07 — Consultar y borrar el cuadro sin perder resultados
 
@@ -115,6 +127,20 @@ Cuando exista ese formato se agrega una columna `phase` (`group`/`knockout`), qu
 
 **Consecuencias**: sirve además como evaluación de cuánto costaría el formato de zonas, que es más aditivo de lo que parece. Se reusan enteros `matches`, `match_sets`, la carga de resultados con su validador de scores de pádel, y todo el patrón de tenancy. Lo genuinamente nuevo son tres cosas: la tabla de posiciones con sus desempates (que se resuelven **solo entre los empatados**, no contra todo el torneo), el algoritmo de cruce de clasificados —el primero de una zona no puede cruzarse con el segundo de la misma en la primera ronda—, y el sorteo de zonas con las cabezas repartidas una por grupo. Además se rompen dos invariantes de hoy: `in_progress ⟺ existe el bracket` (con zonas la llave se genera en el medio del torneo) y `(round, position)` como coordenadas de un árbol.
 
+<a id="billing-fase-3"></a>
+
+## 2026-09-09 — Mercado Pago desde el release inicial. Revisa el cobro manual y la fase diferida.
+
+**Contexto**: el enfoque anterior dejaba los upgrades de los clubes para una fase posterior y suponía una activación manual mientras tanto. Ese circuito tiene dos problemas: el estado de una suscripción paga depende de una operación humana y el producto no valida su flujo comercial real desde el comienzo.
+
+**Decisión**:
+
+- **Todo upgrade de `free` a `basic` o `pro` se cobra con Mercado Pago desde el release inicial.** El panel del club inicia el checkout y el webhook, validado e idempotente, es la única autoridad que activa el plan.
+- **No existe cobro ni activación manual.** El plan `free` sigue naciendo `active`; los planes pagos pasan de `pending` a activos solo después de la confirmación del proveedor.
+- La idempotencia, la bitácora `payment_events`, la degradación hacia adelante y la cuota por llaves activas ya definidas siguen vigentes. Esta decisión adelanta la integración al release inicial; no cambia esas garantías.
+
+**Consecuencias**: el release inicial requiere checkout, manejo seguro de credenciales, validación de firma del webhook, persistencia idempotente de eventos y transición atómica de `plan`, `max_tournaments` y `status`. La tabla `payment_events` ya está migrada, pero el código de integración aún no existe. Esta entrada reemplaza, para pagos de suscripciones de clubes, la decisión histórica de **cobro manual, pasarela diferida** del 2026-07-16 y cualquier texto que ubique Mercado Pago exclusivamente en una fase 3.
+
 ## 2026-09-03 — Fase 3: degradación hacia adelante, cuota simultánea con cobro mensual, y `payment_events` para la idempotencia del webhook
 
 **Contexto**: con el plan `free` explícito (entrada de abajo), el upgrade a plan pago pasó de idea vaga a siguiente paso del modelo de negocio, y entró al alcance como fase 3 en `docs/product-brief.md`. Quedaban tres preguntas que había que cerrar **antes** de escribir el webhook, no después. Se cierran acá.
@@ -135,6 +161,8 @@ Cuando exista ese formato se agrega una columna `phase` (`group`/`knockout`), qu
 **Consecuencias**: `payment_events` queda migrada **sin código que la use**, que es una excepción consciente a la regla de `data-model.md` de no adelantar tablas. Se acepta porque su forma no es una apuesta —sale del contrato publicado de MP— y porque la columna `payload` absorbe lo que no se sepa todavía. Las columnas que `subscriptions` necesite para atarse a la preaprobación **no** se adelantan: esas sí dependen de decisiones de integración y entran con el código que las escribe.
 
 `PaymentProvider` nace como enum de un solo valor por la misma razón que `TournamentFormat`: sumar una pasarela después es aditivo y no un cambio de tipo sobre una columna publicada.
+
+<a id="billing-vigente"></a>
 
 ## 2026-09-03 — Plan `free` de entrada, con una llave. Revisa "los dos son pagos" del 2026-08-25
 
@@ -207,6 +235,8 @@ Tres reglas derivadas, todas verificables en review: `clubId` es siempre el prim
 
 ## 2026-08-25 — Suscripción por usuario, planes `basic`/`pro`, y cuota de torneos simultáneos
 
+> **Reemplazada parcialmente:** los planes y defaults de alta se revisaron en [Plan free de entrada](#billing-vigente). La entrada siguiente conserva el contexto original.
+
 **Contexto**: `subscriptions` entra con el slice 2 y el contrato necesitaba tres cosas que el brief no fijaba: qué planes existen, cuánto vale `max_tournaments`, y —lo que faltaba de verdad— **qué cuenta ese número y en qué ventana**.
 
 **Decisión**:
@@ -244,6 +274,8 @@ La razón **no** es el squatting. Sacar el campo no lo arregla: quien quiera `pa
 
 **Consecuencias**: `409 slug_taken` sigue existiendo en el contrato —hoy solo lo dispara la derivación al agotar sus intentos—, así que agregar el campo de entrada más adelante no necesita un `code` nuevo. `SLUG_REGEX` y el `@Transform` de normalización de entrada **no** se escribieron: entran el día que exista un campo de entrada que validar. Lo que sí vive ya en `apps/api/src/common/transforms/slug.ts` es `slugify` y la lista de reservados, que la derivación necesita.
 
+<a id="registro-vigente"></a>
+
 ## 2026-08-25 — Una sola puerta de registro: todo `User` tiene `Player`
 
 **Contexto**: al diseñar el alta de la cuenta de organizador apareció la pregunta de si un organizador debería registrarse por un camino distinto al del jugador. Hoy el único alta es `POST /auth/register`, que exige DNI y crea `User` + `Player` en la misma transacción (o reclama un `Player` huérfano que un club precargó).
@@ -253,6 +285,8 @@ La razón **no** es el squatting. Sacar el campo no lo arregla: quien quiera `pa
 **Esto es un invariante del que depende la corrección de un código de error ya en producción.** `PlayersService.register` responde `409 email_registered` apenas ve el email tomado, **sin mirar si ese `User` tiene `Player`**. Con una sola puerta, esa respuesta siempre es correcta. El bug no está arreglado: **está dormido**, y se despierta el día que alguien agregue un alta que cree un `User` sin `Player` — ahí el mensaje pasaría a mentir. Si eso llega a pasar, `PlayersService.register` tiene que chequear `existingUser.player` antes de tirar el `409`.
 
 **Consecuencias**: todo dueño de club queda con perfil de jugador y DNI, juegue o no. Ese perfil es global y va a aparecer en `/jugadores` con cero torneos; se resuelve más adelante filtrando jugadores sin `teams`. El costo se acepta a cambio de no tener dos caminos de alta que mantener sincronizados, cada uno con su propia versión del dedup por DNI.
+
+<a id="prs-vigente"></a>
 
 ## 2026-08-20 — Los PRs no cruzan el límite de paquete: API y frontend son dos PRs coordinados
 
@@ -265,6 +299,8 @@ La ventana que el PR único evitaba —un endpoint en `main` que todavía no lla
 Esta entrada **no revierte** la del 2026-07-16 ("Monorepo con Next.js para el frontend"): la delimita. El monorepo sigue vigente y por las razones que le quedan intactas —docs y agentes compartidos, un solo lockfile, tipos compartibles cuando exista `packages/shared`—; lo que cae es uno de los argumentos de su contexto, "el contrato API↔frontend en un solo PR". El contrato sigue siendo compartido; lo que cambia es que se comparte por `/docs` y no por el diff de un PR único.
 
 **Consecuencias**: `docs/workflow.md` reescribe su regla de PRs y el paso 3 de "El ciclo de una feature con los agentes", que decía "API y UI en la misma rama". El `CLAUDE.md` raíz actualiza su línea de workflow. `docs/api-conventions.md` gana la sección "Evolución del contrato": la retrocompatibilidad pasa a ser propiedad del contrato y no solo del workflow, revisable en el PR de la API como cualquier otra regla. Ningún agente de `.claude/agents/` afirmaba la regla vieja, así que ninguno se toca — la instrucción de `code-reviewer` de revisar `apps/web` cuando el diff lo toca sigue siendo correcta, porque los PRs del equipo de frontend viven en este mismo repo. Un cambio de contrato que hoy sería un renombre se hace en tres pasos (agregar lo nuevo, migrar al consumidor en su propio PR, borrar lo viejo en un tercero), y eso encarece las decisiones de contrato tomadas a la ligera: el momento barato para cambiar un nombre sigue siendo antes de que exista el primer consumidor.
+
+<a id="sesion-vigente"></a>
 
 ## 2026-08-17 — Login (API): JWT bearer puro, token único de 7 días, autorización resuelta contra la DB
 
@@ -430,6 +466,8 @@ Tres riesgos conocidos, anotados acá para no perderlos de vista mientras se def
 
 **Consecuencias**: los cambios funcionales del frontend actualizan esa carpeta en el mismo PR, y cualquier ajuste de alcance o arquitectura del frontend debe seguir reflejándose ahí aunque existan docs raíz del producto y de decisiones técnicas. En particular, `apps/web/docs/API.md` documenta **cómo consume** el frontend, y difiere las reglas del contrato a `docs/api-conventions.md` en vez de duplicarlas.
 
+<a id="ids-vigentes"></a>
+
 ## 2026-07-25 — IDs como UUIDv7
 
 **Contexto**: PostgreSQL + Prisma (2026-07-16) dejó abierta la estrategia de `id`. El ERD de referencia (`data-model.md`) los mostraba como `bigint`/`BIGSERIAL` a modo de placeholder, marcando "int vs uuid" como pendiente. Se cierra acá.
@@ -443,6 +481,8 @@ Tres riesgos conocidos, anotados acá para no perderlos de vista mientras se def
 **Consecuencias**: en el schema de Prisma los `id` quedan como `String @id @default(uuid(7)) @db.Uuid` (el `@db.Uuid` hace que la columna sea `uuid` nativa y no `text`). Las columnas UUID pesan 16 bytes vs. 8 de un `bigint` — irrelevante a la escala del MVP. El DDL de referencia en `data-model.md` queda en `UUID` y sin `DEFAULT` (el valor lo pone la app). Esto cierra el "int vs uuid" que la decisión de PostgreSQL + Prisma (2026-07-16) dejaba abierto.
 
 ## 2026-07-23 — Modelo de identidad y suscripción: `User`, `Player`, `Club`
+
+> **Reemplazada parcialmente:** el registro único se define en [Una sola puerta de registro](#registro-vigente) y la sesión vigente en [Login API](#sesion-vigente). Las afirmaciones originales sobre selección de rol y relaciones en el JWT son históricas.
 
 **Contexto**: la decisión "los jugadores tienen cuenta desde fase 1" (más abajo, misma fecha) dejó por definir la relación entre el usuario-staff y el `Player`, y dónde vive la suscripción. Se cierra acá.
 
@@ -492,6 +532,8 @@ Tres riesgos conocidos, anotados acá para no perderlos de vista mientras se def
 
 ## 2026-07-16 — Monorepo con Next.js para el frontend
 
+> **Reemplazada parcialmente:** la justificación de API y frontend en un único PR ya no es la política vigente; consultar [PRs por paquete](#prs-vigente). Se mantiene el monorepo.
+
 **Contexto**: el frontend iba a vivir en un repo separado (`dupla-saas-client`), que quedó vacío antes de arrancar. El contrato API↔frontend en un solo PR, los docs/agentes compartidos y los tipos compartibles pesan más que el aislamiento de repos para un equipo chico.
 **Decisión**: monorepo con pnpm workspaces — `apps/api` (NestJS) y `apps/web` (Next.js 16, App Router, Tailwind v4). Next.js y no una SPA porque la vista pública de torneos necesita SSR/SEO. El repo `dupla-saas-client` se archiva.
 **Consecuencias**: un solo lockfile en la raíz; CI con un job por app; en dev la API corre en :3000 y el frontend en :3001.
@@ -515,11 +557,15 @@ Tres riesgos conocidos, anotados acá para no perderlos de vista mientras se def
 
 ## 2026-07-16 — Auth propia: Passport + JWT
 
+> **Reemplazada parcialmente:** la identidad de jugadores ya no se difiere a fase 2; consultar [registro vigente](#registro-vigente) y [sesión vigente](#sesion-vigente). Se mantiene Passport + JWT.
+
 **Contexto**: los usuarios de fase 1 son staff de clubes — pocos, sin necesidad de social login ni SSO.
 **Decisión**: autenticación propia con Passport + JWT (el camino estándar de Nest). Sin proveedor externo.
 **Consecuencias**: sin costo por usuario ni dependencia de terceros. La identidad de jugadores (fase 2, inscripción online) se diseñará sobre esta misma base.
 
 ## 2026-07-16 — Cobro manual, pasarela diferida
+
+> **Reemplazada para suscripciones de clubes:** Mercado Pago es obligatorio desde el release inicial; ver [Mercado Pago desde el release inicial](#billing-fase-3).
 
 **Decisión**: sin integración de pagos en el MVP. Clubes se activan a mano. Cuando se valide el producto, la pasarela es Mercado Pago (mercado inicial: Argentina).
 
