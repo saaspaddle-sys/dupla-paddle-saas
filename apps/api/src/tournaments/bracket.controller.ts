@@ -23,7 +23,7 @@ import {
 import { ClubId } from '../auth/decorators/club-id.decorator';
 import { ClubScopeGuard } from '../auth/guards/club-scope.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { API_TAGS, JWT_SECURITY_SCHEME } from '../swagger/swagger.setup';
+import { JWT_SECURITY_SCHEME, SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { BracketService } from './bracket.service';
 import { BracketResponseDto } from './dto/bracket-response.dto';
 import { TournamentParamsDto } from './dto/tournament-params.dto';
@@ -43,7 +43,7 @@ import { TournamentParamsDto } from './dto/tournament-params.dto';
  * `requireTournamentInScope`, que separarlo obligaría a exportar a través de
  * un límite de módulo.
  */
-@ApiTags(API_TAGS.club)
+@ApiTags(SWAGGER_TAGS.tournaments)
 @Controller('tournaments/:tournamentId/bracket')
 export class BracketController {
   constructor(private readonly bracketService: BracketService) {}

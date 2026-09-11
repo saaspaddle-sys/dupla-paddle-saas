@@ -24,7 +24,7 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ClubId } from '../auth/decorators/club-id.decorator';
 import { ClubScopeGuard } from '../auth/guards/club-scope.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { API_TAGS, JWT_SECURITY_SCHEME } from '../swagger/swagger.setup';
+import { JWT_SECURITY_SCHEME, SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { CreateTournamentDto } from './dto/create-tournament.dto';
 import { ListTournamentsDto } from './dto/list-tournaments.dto';
 import { TournamentListResponseDto } from './dto/tournament-list-response.dto';
@@ -42,7 +42,7 @@ import { TournamentsService } from './tournaments.service';
  *
  * El `club_id` no aparece en ninguna ruta: sale del usuario autenticado.
  */
-@ApiTags(API_TAGS.club)
+@ApiTags(SWAGGER_TAGS.tournaments)
 @Controller('tournaments')
 export class TournamentsController {
   constructor(private readonly tournamentsService: TournamentsService) {}

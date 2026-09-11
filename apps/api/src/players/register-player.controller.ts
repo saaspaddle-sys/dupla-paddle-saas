@@ -7,7 +7,7 @@ import {
   ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { API_TAGS } from '../swagger/swagger.setup';
+import { SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { RegisterPlayerDto } from './dto/register-player.dto';
 import { RegisterPlayerResponseDto } from './dto/register-player-response.dto';
 import { PlayersService } from './players.service';
@@ -21,7 +21,7 @@ import { PlayersService } from './players.service';
  */
 // Endpoint de plataforma: sin auth, sin club_id (Player no lo tiene), así que
 // tampoco lleva @ApiBearerAuth.
-@ApiTags(API_TAGS.platform)
+@ApiTags(SWAGGER_TAGS.players)
 @Controller('auth')
 export class RegisterPlayerController {
   constructor(private readonly playersService: PlayersService) {}

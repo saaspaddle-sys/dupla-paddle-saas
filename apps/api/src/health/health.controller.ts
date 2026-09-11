@@ -5,7 +5,7 @@ import {
   ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { API_TAGS } from '../swagger/swagger.setup';
+import { SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { HealthResponseDto } from './dto/health-response.dto';
 import { HealthService } from './health.service';
 
@@ -16,7 +16,7 @@ import { HealthService } from './health.service';
  * la respuesta no dice nada que no se pueda deducir mandando cualquier
  * request (arriba/abajo), sin host, credenciales ni detalle del driver.
  */
-@ApiTags(API_TAGS.ops)
+@ApiTags(SWAGGER_TAGS.operations)
 @Controller('health')
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}

@@ -17,7 +17,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { API_TAGS, JWT_SECURITY_SCHEME } from '../swagger/swagger.setup';
+import { JWT_SECURITY_SCHEME, SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { CurrentUserResponseDto } from './dto/current-user-response.dto';
@@ -33,7 +33,7 @@ import type { AuthenticatedUser } from './types/authenticated-user';
  * criterio que ese controller documenta: el prefijo de ruta no tiene que
  * coincidir con el módulo dueño.
  */
-@ApiTags(API_TAGS.platform)
+@ApiTags(SWAGGER_TAGS.auth)
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

@@ -26,7 +26,7 @@ import {
 import { ClubId } from '../auth/decorators/club-id.decorator';
 import { ClubScopeGuard } from '../auth/guards/club-scope.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { API_TAGS, JWT_SECURITY_SCHEME } from '../swagger/swagger.setup';
+import { JWT_SECURITY_SCHEME, SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { TeamParamsDto } from './dto/team-params.dto';
 import { TeamResponseDto } from './dto/team-response.dto';
@@ -45,7 +45,7 @@ import { TeamsService } from './teams.service';
  * `tournamentId` del path se valida siempre contra ese club antes de tocar
  * nada.
  */
-@ApiTags(API_TAGS.club)
+@ApiTags(SWAGGER_TAGS.tournaments)
 @Controller('tournaments/:tournamentId/teams')
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
