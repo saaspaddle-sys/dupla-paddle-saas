@@ -15,7 +15,7 @@ interface ErrorBody {
 }
 
 interface SuccessfulRegistration {
-  outcome: 'created' | 'claimed';
+  outcome: 'created';
   user: { id: string; email: string };
   player: {
     id: string;
@@ -169,15 +169,15 @@ describe('POST /auth/register (e2e)', () => {
     expect(stored).not.toBeNull();
   });
 
-  it('201: claims an ownerless Player instead of duplicating it', async () => {
+  it('409 profile_claim_verification_required: an ownerless profile cannot be claimed by DNI alone', async () => {
     const dni = testDni(4);
     const email = testEmail('claim');
-
     const orphan = await prisma.player.create({
       data: {
         dni,
         firstName: 'Carlos',
         lastName: 'Preexisting',
+        email: 'profile-contact@example.com',
         userId: null,
       },
     });
@@ -192,19 +192,20 @@ describe('POST /auth/register (e2e)', () => {
         lastName: 'Preexisting',
       });
 
-    expect(response.status).toBe(201);
-    const body = response.body as SuccessfulRegistration;
-    expect(body.outcome).toBe('claimed');
-    // Mismo id: se vinculó el perfil existente, no se creó uno nuevo.
-    expect(body.player.id).toBe(orphan.id);
-
-    const total = await prisma.player.count({ where: { dni } });
-    expect(total).toBe(1);
-
-    const updated = await prisma.player.findUniqueOrThrow({
-      where: { id: orphan.id },
-    });
-    expect(updated.userId).not.toBeNull();
+    expect(response.status).toBe(409);
+    expect((response.body as ErrorBody).code).toBe(
+      'profile_claim_verification_required',
+    );
+    expect(await prisma.player.count({ where: { dni } })).toBe(1);
+    expect(
+      (await prisma.player.findUniqueOrThrow({ where: { id: orphan.id } }))
+        .userId,
+    ).toBeNull();
+    expect(
+      (await prisma.player.findUniqueOrThrow({ where: { id: orphan.id } }))
+        .email,
+    ).toBe('profile-contact@example.com');
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
   });
 
   it('409 dni_has_account: the dni is already linked to another account', async () => {
@@ -421,14 +422,15 @@ describe('POST /auth/register (e2e)', () => {
     expect(raw).not.toContain('Buenos Aires');
   });
 
-  it('201: on a claim, keeps the profile data loaded by the club and fills only what was empty', async () => {
+  it('does not overwrite an ownerless profile before email-verification claim succeeds', async () => {
     const dni = testDni(14);
-
+    const email = testEmail('claim-profile-fields');
     const orphan = await prisma.player.create({
       data: {
         dni,
         firstName: 'Club',
         lastName: 'Preloaded',
+        email: 'preloaded@example.com',
         userId: null,
         country: 'UY',
         phone: '+59899123456',
@@ -438,7 +440,7 @@ describe('POST /auth/register (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
-        email: testEmail('claim-profile-fields'),
+        email,
         password: 'password123',
         dni,
         firstName: 'Club',
@@ -449,19 +451,16 @@ describe('POST /auth/register (e2e)', () => {
         dominantHand: 'left',
       });
 
-    expect(response.status).toBe(201);
-    const body = response.body as SuccessfulRegistration;
-    expect(body.outcome).toBe('claimed');
-
-    const updated = await prisma.player.findUniqueOrThrow({
+    expect(response.status).toBe(409);
+    expect((response.body as ErrorBody).code).toBe(
+      'profile_claim_verification_required',
+    );
+    const unchanged = await prisma.player.findUniqueOrThrow({
       where: { id: orphan.id },
     });
-    // Lo que ya tenía el club no se pisa...
-    expect(updated.country).toBe('UY');
-    expect(updated.phone).toBe('+59899123456');
-    // ...y lo que estaba vacío se completa con lo que tipeó la persona.
-    expect(updated.province).toBe('Buenos Aires');
-    expect(updated.dominantHand).toBe('left');
+    expect(unchanged.userId).toBeNull();
+    expect(unchanged.country).toBe('UY');
+    expect(unchanged.phone).toBe('+59899123456');
   });
 
   it('400 validation: rejects a phone that is not in E.164 format', async () => {

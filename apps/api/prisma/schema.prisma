@@ -39,7 +39,7 @@ model Player {
   dni          String        @unique
   firstName    String        @map("first_name")
   lastName     String        @map("last_name")
-  email        String?
+  email        String
   category     String?
   gender       PlayerGender?
   birthDate    DateTime?     @map("birth_date") @db.Date

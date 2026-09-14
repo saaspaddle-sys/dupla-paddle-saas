@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { PlayerGender } from '../../generated/prisma/enums';
 
 export class RegisteredAccountDto {
@@ -15,17 +16,17 @@ export class RegisteredPlayerDto {
 }
 
 /**
- * `outcome` distingue si el registro creó un perfil nuevo o reclamó uno
- * que un club ya había cargado. Habilita "ya teníamos tu perfil, jugaste
- * N torneos" del lado de la UI — es el valor visible del dedup.
+ * El registro crea la cuenta y el perfil en la misma transacción. Cuando el
+ * DNI ya identifica un perfil sin dueño, el endpoint devuelve
+ * `profile_claim_verification_required`: reclamarlo exige un flujo posterior
+ * que pruebe control del email ya almacenado en ese perfil.
  *
  * Deliberadamente **no** es un eco del request ni una serialización de
  * `Player`: nunca incluye `dni` (Ley 25.326, regla dura y sin excepciones)
  * ni `passwordHash`.
  *
- * `firstName`/`lastName`/`category` sí salen, aunque en un claim puedan
- * ser datos que cargó el club (no lo que tipeó quien se registra — el
- * service nunca los pisa). No es una superficie nueva: son exactamente
+ * `firstName`/`lastName`/`category` sí salen. No es una superficie nueva:
+ * son exactamente
  * los campos que la vista pública de jugadores va a mostrar sin auth
  * (`product-brief.md`, alcance 1 — "vista pública: torneos, llaves y
  * jugadores"). `player.email` y `player.birthDate` sí se excluyen: esos
@@ -34,7 +35,9 @@ export class RegisteredPlayerDto {
  * conozca un DNI.
  */
 export class RegisterPlayerResponseDto {
-  outcome!: 'created' | 'claimed';
+  /** Siempre `created`; un claim se habilita en un flujo posterior. */
+  @ApiProperty({ enum: ['created'], example: 'created' })
+  outcome!: 'created';
   user!: RegisteredAccountDto;
   player!: RegisteredPlayerDto;
 }

@@ -14,6 +14,20 @@ Este archivo conserva decisiones históricas, no una lista de funcionalidades en
 | Límites de los PRs     | [PRs por paquete](#prs-vigente)     |
 | Identificadores        | [UUIDv7](#ids-vigentes)             |
 
+## 2026-09-14 — El email de Player es obligatorio para poder reclamar el perfil
+
+**Decisión**: `players.email` pasa a ser `NOT NULL` mediante una migración nueva. No hay datos de producción que conservar, por lo que se reemplaza la compatibilidad nullable prevista inicialmente para perfiles históricos. El registro público y el alta por organizador ya exigen email, así que ambos caminos satisfacen el invariante.
+
+**Consecuencia**: no existe una rama de recuperación para perfiles sin email. Un perfil sin `user_id` bloquea `POST /auth/register` con `409 profile_claim_verification_required`; el futuro flujo de claim debe verificar control del email ya guardado. Hasta que exista ese flujo, el contrato de registro solo puede devolver `outcome: "created"`: no anuncia ni produce `claimed`.
+
+## 2026-09-14 — Alta por organizador y reclamo seguro de perfiles globales
+
+**Decisión histórica (estado: supersedida por la entrada anterior)**: `POST /players` permite al staff autenticado de un club crear un `Player` global sin credenciales. En este diseño inicial, el endpoint exigía un email válido en su DTO mientras `players.email` permanecía nullable para perfiles históricos. La decisión vigente reemplazó esa compatibilidad: `players.email` es `NOT NULL`. El `club_id` se obtiene exclusivamente de `ClubScopeGuard` y autoriza la operación; nunca se persiste en `Player`.
+
+`GET /players` es la búsqueda paginada para ese mismo staff. Devuelve una proyección deliberada sin DNI, email, teléfonos ni contacto de emergencia. La clave de deduplicación sigue siendo únicamente el DNI y el índice único de la base resuelve carreras.
+
+**Reemplaza para los perfiles sin dueño** la regla histórica de auto-link por DNI de la entrada de 2026-08-11: un DNI no prueba identidad. `POST /auth/register` ahora responde `409 profile_claim_verification_required` sin crear un `User` ni modificar el perfil. Un flujo posterior debe demostrar control del email que ya está almacenado en el perfil; nunca puede usar un email suministrado por quien intenta reclamarlo. La entrega de email y el flujo de claim quedan fuera de este work unit.
+
 ## 2026-09-07 — Consultar y borrar el cuadro sin perder resultados
 
 `GET /tournaments/:tournamentId/bracket` devuelve el mismo DTO que el POST, leído del cuadro persistido y ordenado por ronda y posición. No vuelve a sortear. La lectura del scope y los partidos comparte una transacción `RepeatableRead`; un borrado concurrente no mezcla dos snapshots. Un torneo ajeno o inexistente devuelve `404 tournament_not_found`; uno propio sin cuadro devuelve `404 bracket_not_found`.

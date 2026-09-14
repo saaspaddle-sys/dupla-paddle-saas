@@ -52,13 +52,125 @@
             }
           },
           "409": {
-            "description": "El email ya tiene cuenta (`email_registered`), o el DNI ya está asociado a una (`dni_has_account`)."
+            "description": "El email ya tiene cuenta (`email_registered`), el DNI ya está asociado a una (`dni_has_account`) o el perfil sin dueño requiere verificación de su email almacenado (`profile_claim_verification_required`)."
           },
           "429": {
             "description": "Demasiados intentos (`too_many_requests`)."
           }
         },
         "summary": "Registra un jugador y su cuenta, deduplicando por DNI",
+        "tags": [
+          "Players"
+        ]
+      }
+    },
+    "/players": {
+      "get": {
+        "operationId": "OrganizerPlayers_list",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minLength": 2,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerPlayerListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Query inválida (`validation`)."
+          },
+          "401": {
+            "description": "Sin token o token inválido (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Busca perfiles globales para inscribirlos desde el club",
+        "tags": [
+          "Players"
+        ]
+      },
+      "post": {
+        "operationId": "OrganizerPlayers_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizerPlayerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizerPlayerResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body inválido (`validation`). Email es obligatorio para este flujo."
+          },
+          "401": {
+            "description": "Sin token o token inválido (`unauthenticated`)."
+          },
+          "403": {
+            "description": "La cuenta no administra ningún club (`club_required`)."
+          },
+          "409": {
+            "description": "Ya existe un perfil con ese DNI (`player_dni_exists`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Crea un perfil global de jugador desde el club",
         "tags": [
           "Players"
         ]
@@ -1090,10 +1202,11 @@
         "properties": {
           "outcome": {
             "type": "string",
+            "description": "Siempre `created`; un claim se habilita en un flujo posterior.",
             "enum": [
-              "created",
-              "claimed"
-            ]
+              "created"
+            ],
+            "example": "created"
           },
           "user": {
             "$ref": "#/components/schemas/RegisteredAccountDto"
@@ -1106,6 +1219,129 @@
           "outcome",
           "user",
           "player"
+        ]
+      },
+      "OrganizerPlayerResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "gender": {
+            "nullable": true,
+            "enum": [
+              "male",
+              "female"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "category",
+          "gender",
+          "createdAt"
+        ]
+      },
+      "OrganizerPlayerListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizerPlayerResponseDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "CreateOrganizerPlayerDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "dni": {
+            "type": "string",
+            "pattern": "^\\d{7,8}$"
+          },
+          "firstName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "gender": {
+            "enum": [
+              "male",
+              "female"
+            ],
+            "type": "string"
+          },
+          "birthDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "dominantHand": {
+            "enum": [
+              "right",
+              "left"
+            ],
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "province": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "phone": {
+            "type": "string"
+          },
+          "emergencyPhone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "dni",
+          "firstName",
+          "lastName"
         ]
       },
       "LoginDto": {

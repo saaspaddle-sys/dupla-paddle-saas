@@ -1,4 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
+import { Prisma } from '../generated/prisma/client';
 import { hashPassword } from '../common/crypto/password';
 import { uniqueViolationMentions } from '../common/prisma/unique-violation';
 import {
@@ -10,9 +11,21 @@ import {
   normalizeText,
 } from '../common/transforms/normalize';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateOrganizerPlayerDto } from './dto/create-organizer-player.dto';
+import {
+  ListOrganizerPlayersDto,
+  ORGANIZER_PLAYERS_PAGE_SIZE_DEFAULT,
+} from './dto/list-organizer-players.dto';
+import {
+  OrganizerPlayerListResponseDto,
+  OrganizerPlayerResponseDto,
+} from './dto/organizer-player-response.dto';
 import { RegisterPlayerDto } from './dto/register-player.dto';
 import { RegisterPlayerResponseDto } from './dto/register-player-response.dto';
-import { toRegisterPlayerResponse } from './players.mapper';
+import {
+  toOrganizerPlayerResponse,
+  toRegisterPlayerResponse,
+} from './players.mapper';
 
 function emailAlreadyRegistered(): ConflictException {
   return new ConflictException({
@@ -28,16 +41,26 @@ function dniAlreadyHasAccount(): ConflictException {
   });
 }
 
+function playerDniExists(): ConflictException {
+  return new ConflictException({
+    code: 'player_dni_exists',
+    message: 'a player profile with that dni already exists',
+  });
+}
+
+function profileClaimVerificationRequired(): ConflictException {
+  return new ConflictException({
+    code: 'profile_claim_verification_required',
+    message:
+      'the existing player profile must be claimed through email verification',
+  });
+}
+
 @Injectable()
 export class PlayersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async register(dto: RegisterPlayerDto): Promise<RegisterPlayerResponseDto> {
-    // El DTO ya llega normalizado por los @Transform, pero se reaplica acá
-    // (son idempotentes) para sostener el invariante si el service se
-    // llama desde otro entry point que no pase por el DTO — p. ej. el
-    // alta por el organizador, en un slice futuro. Los campos del DTO ya
-    // están tipados como `string`, así que no hace falta castear.
     const email = normalizeEmail(dto.email);
     const dni = normalizeDni(dto.dni);
     const firstName = normalizeName(dto.firstName);
@@ -53,7 +76,8 @@ export class PlayersService {
       ? normalizePhone(dto.emergencyPhone)
       : null;
 
-    // No mantener la transacción abierta durante ~100ms de hashing.
+    // El hash de bcrypt es deliberadamente lento; no mantiene abierta la
+    // transacción durante ese trabajo de CPU.
     const passwordHash = await hashPassword(dto.password);
 
     try {
@@ -64,92 +88,115 @@ export class PlayersService {
         }
 
         const existingPlayer = await tx.player.findUnique({ where: { dni } });
+        if (existingPlayer) {
+          if (existingPlayer.userId !== null) {
+            throw dniAlreadyHasAccount();
+          }
 
-        if (!existingPlayer) {
-          const user = await tx.user.create({ data: { email, passwordHash } });
-          const player = await tx.player.create({
-            data: {
-              userId: user.id,
-              dni,
-              firstName,
-              lastName,
-              email,
-              category,
-              gender: dto.gender ?? null,
-              birthDate,
-              dominantHand: dto.dominantHand ?? null,
-              country,
-              province,
-              phone,
-              emergencyPhone,
-            },
-          });
-          return toRegisterPlayerResponse(user, player, 'created');
-        }
-
-        if (existingPlayer.userId !== null) {
-          throw dniAlreadyHasAccount();
+          // Un DNI no prueba identidad. Todos los perfiles ahora tienen email;
+          // un claim futuro debe verificar el control de esa dirección ya
+          // guardada, nunca una dirección enviada por quien reclama.
+          throw profileClaimVerificationRequired();
         }
 
         const user = await tx.user.create({ data: { email, passwordHash } });
-
-        // *Claim*: el perfil existe sin dueño (lo cargó un club). Guarda
-        // condicional en el WHERE, no un `update` liso — dos claims
-        // concurrentes con el mismo DNI usan `user_id` DISTINTOS, así que
-        // el índice único de `players.user_id` no los frena. Bajo Read
-        // Committed, el segundo UPDATE espera el commit del primero,
-        // reevalúa la condición y no afecta ninguna fila.
-        //
-        // Merge: solo se completan campos vacíos del perfil existente.
-        // `firstName`/`lastName` son NOT NULL y nunca se pisan — si el
-        // club cargó un nombre distinto, se corrige desde la edición de
-        // perfil (slice futuro), no en el registro de otra persona.
-        //
-        // Todo campo opcional nuevo del perfil se agrega también acá: si
-        // solo entra en el `create` de arriba, el caso claim descarta en
-        // silencio lo que la persona tipeó en el registro.
-        const [claimedPlayer] = await tx.player.updateManyAndReturn({
-          where: { id: existingPlayer.id, userId: null },
+        const player = await tx.player.create({
           data: {
             userId: user.id,
-            email: existingPlayer.email ?? email,
-            category: existingPlayer.category ?? category,
-            gender: existingPlayer.gender ?? dto.gender ?? null,
-            birthDate: existingPlayer.birthDate ?? birthDate,
-            dominantHand:
-              existingPlayer.dominantHand ?? dto.dominantHand ?? null,
-            country: existingPlayer.country ?? country,
-            province: existingPlayer.province ?? province,
-            phone: existingPlayer.phone ?? phone,
-            emergencyPhone: existingPlayer.emergencyPhone ?? emergencyPhone,
+            dni,
+            firstName,
+            lastName,
+            email,
+            category,
+            gender: dto.gender ?? null,
+            birthDate,
+            dominantHand: dto.dominantHand ?? null,
+            country,
+            province,
+            phone,
+            emergencyPhone,
           },
         });
-
-        if (!claimedPlayer) {
-          // El SELECT de arriba vio el perfil libre, pero perdió la carrera
-          // contra otro claim entre el findUnique y este update.
-          throw dniAlreadyHasAccount();
-        }
-
-        return toRegisterPlayerResponse(user, claimedPlayer, 'claimed');
+        return toRegisterPlayerResponse(user, player, 'created');
       });
     } catch (error) {
       throw this.toKnownConflict(error) ?? error;
     }
   }
 
-  /**
-   * El SELECT previo (`findUnique`) da el mensaje correcto en el caso
-   * normal, pero no es la garantía: dos registros simultáneos con el
-   * mismo DNI o email pasan igual el chequeo. El índice único es la
-   * garantía real, y este es el fallback que mapea su violación (P2002)
-   * al mismo 409 que ya tira el camino normal.
-   *
-   * De dónde sale el índice lo resuelve `uniqueViolationMentions`, y no un
-   * `meta.target` leído a mano: con el driver adapter de Prisma 7 ese campo
-   * no existe, así que la versión anterior de este chequeo no podía disparar
-   * nunca. Ver la entrada del 2026-09-06 en `docs/decisions.md`.
-   */
+  async listForOrganizer(
+    query: ListOrganizerPlayersDto,
+  ): Promise<OrganizerPlayerListResponseDto> {
+    const limit = query.limit ?? ORGANIZER_PLAYERS_PAGE_SIZE_DEFAULT;
+    const normalizedDni = normalizeDni(query.q);
+    const dni = /^\d{7,8}$/.test(normalizedDni) ? normalizedDni : undefined;
+    const where: Prisma.PlayerWhereInput = {
+      OR: [
+        { firstName: { contains: query.q, mode: 'insensitive' } },
+        { lastName: { contains: query.q, mode: 'insensitive' } },
+        ...(dni ? [{ dni }] : []),
+      ],
+      ...(query.cursor ? { id: { lt: query.cursor } } : {}),
+    };
+    const players = await this.prisma.player.findMany({
+      where,
+      orderBy: { id: 'desc' },
+      take: limit + 1,
+    });
+    const hasNextPage = players.length > limit;
+    const page = hasNextPage ? players.slice(0, limit) : players;
+    const items = page.map(toOrganizerPlayerResponse);
+
+    return {
+      items,
+      nextCursor: hasNextPage ? items[items.length - 1].id : null,
+    };
+  }
+
+  async createForOrganizer(
+    dto: CreateOrganizerPlayerDto,
+  ): Promise<OrganizerPlayerResponseDto> {
+    const email = normalizeEmail(dto.email);
+    const dni = normalizeDni(dto.dni);
+    const firstName = normalizeName(dto.firstName);
+    const lastName = normalizeName(dto.lastName);
+    const category = dto.category ? normalizeText(dto.category) : null;
+    const birthDate = dto.birthDate
+      ? new Date(`${dto.birthDate}T00:00:00.000Z`)
+      : null;
+    const country = dto.country ? normalizeCountry(dto.country) : null;
+    const province = dto.province ? normalizeText(dto.province) : null;
+    const phone = dto.phone ? normalizePhone(dto.phone) : null;
+    const emergencyPhone = dto.emergencyPhone
+      ? normalizePhone(dto.emergencyPhone)
+      : null;
+
+    try {
+      const player = await this.prisma.player.create({
+        data: {
+          dni,
+          firstName,
+          lastName,
+          email,
+          category,
+          gender: dto.gender ?? null,
+          birthDate,
+          dominantHand: dto.dominantHand ?? null,
+          country,
+          province,
+          phone,
+          emergencyPhone,
+        },
+      });
+      return toOrganizerPlayerResponse(player);
+    } catch (error) {
+      if (uniqueViolationMentions(error, 'dni')) {
+        throw playerDniExists();
+      }
+      throw error;
+    }
+  }
+
   private toKnownConflict(error: unknown): ConflictException | undefined {
     if (uniqueViolationMentions(error, 'dni')) {
       return dniAlreadyHasAccount();
@@ -157,8 +204,6 @@ export class PlayersService {
     if (uniqueViolationMentions(error, 'email')) {
       return emailAlreadyRegistered();
     }
-    // Un índice que no reconocemos no se disfraza de 409: se deja subir
-    // como 500, que es lo que realmente es.
     return undefined;
   }
 }
