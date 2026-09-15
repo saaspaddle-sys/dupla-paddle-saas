@@ -1095,6 +1095,34 @@
           "Clubs"
         ]
       }
+    },
+    "/webhooks/mercado-pago": {
+      "post": {
+        "operationId": "MercadoPagoWebhook_receive",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MercadoPagoWebhookDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notification was accepted."
+          },
+          "401": {
+            "description": "Webhook signature is invalid (`invalid_webhook_signature`)."
+          }
+        },
+        "summary": "Processes a signed Mercado Pago billing notification",
+        "tags": [
+          "Clubs"
+        ]
+      }
     }
   },
   "info": {
@@ -2174,6 +2202,39 @@
           "reference",
           "checkoutUrl",
           "reused"
+        ]
+      },
+      "MercadoPagoWebhookDataDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "MercadoPagoWebhookDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MercadoPagoWebhookDataDto"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "data"
         ]
       }
     }

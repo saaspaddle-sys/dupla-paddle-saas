@@ -18,6 +18,9 @@ export class AmbiguousPreapprovalCreationError extends Error {
   }
 }
 
+/** La lectura canÃ³nica no pudo verificarse y el proveedor debe reintentar. */
+export class ProviderUnavailableError extends Error {}
+
 export interface CreatePreapprovalInput {
   reference: string;
   payerEmail: string;
@@ -25,6 +28,16 @@ export interface CreatePreapprovalInput {
   amount: number;
   currencyId: string;
   backUrl: string;
+  notificationUrl: string;
+}
+
+export interface AuthorizedPayment {
+  id: string;
+  status: string;
+  preapprovalId: string;
+  amount: number;
+  currencyId: string;
+  externalReference: string;
 }
 
 export interface CreatedPreapproval {
@@ -35,4 +48,5 @@ export interface CreatedPreapproval {
 
 export interface MercadoPagoPreapprovalClient {
   create(input: CreatePreapprovalInput): Promise<CreatedPreapproval>;
+  getAuthorizedPayment(id: string): Promise<AuthorizedPayment>;
 }

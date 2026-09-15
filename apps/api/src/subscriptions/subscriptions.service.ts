@@ -88,6 +88,8 @@ export class SubscriptionsService {
           subscriptionId: subscription.id,
           reference,
           targetPlan,
+          amount: pricing.amount,
+          currency: pricing.currency,
           state: 'recovery_required',
         },
       });
@@ -106,6 +108,7 @@ export class SubscriptionsService {
         amount: pricing.amount,
         currencyId: pricing.currency,
         backUrl: pricing.backUrl,
+        notificationUrl: this.webhookUrl(),
       });
     } catch (error) {
       if (error instanceof DefinitivePreapprovalRejectionError) {
@@ -151,6 +154,20 @@ export class SubscriptionsService {
         message: 'checkout was created and is awaiting recovery',
       });
     }
+  }
+
+  private webhookUrl(): string {
+    const webhookUrl = this.config.get<string>('MERCADO_PAGO_WEBHOOK_URL');
+    try {
+      if (!webhookUrl || new URL(webhookUrl).protocol !== 'https:')
+        throw new Error();
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'billing_not_configured',
+        message: 'billing is not configured',
+      });
+    }
+    return webhookUrl;
   }
 
   private pricingFor(plan: 'basic' | 'pro'): {

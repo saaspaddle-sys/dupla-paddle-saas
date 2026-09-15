@@ -592,3 +592,13 @@ Tres riesgos conocidos, anotados acá para no perderlos de vista mientras se def
 ## 2026-07-16 — Hosting: pendiente
 
 **Estado**: decisión diferida a propósito hasta acercarse al primer deploy. No bloquea el desarrollo.
+
+## 2026-09-15 — Activación inicial por cobro canónico de Mercado Pago
+
+**Contexto**: el checkout recurrente crea una autorización (`preapproval`), pero esa autorización no prueba que una cuota haya sido cobrada. El redirect del navegador tampoco es una fuente confiable: puede abandonarse, falsificarse o llegar antes que el cobro. La fase 1 necesita habilitar el plan pago solamente después de un hecho de cobro verificable por el servidor.
+
+**Decisión**: el webhook de Mercado Pago valida `x-signature` y `x-request-id` contra el secreto del servidor, persiste primero la notificación y luego vuelve a consultar la factura canónica `subscription_authorized_payment` con el access token. Solo una factura canónica `approved` que coincida con el `preapproval`, `external_reference`, importe, moneda y checkout reservado en estado `pending` activa en una transacción serializable el plan, estado y cuota. El `notification_url`, importes y cuotas son de servidor; el frontend no participa en la activación.
+
+**Consecuencias**: reintentos y entregas simultáneas son idempotentes por la bitácora `payment_events` y el estado del checkout; una caída después de persistir el evento se retoma al reintentar. Una autorización, payload adulterado, referencia/importe/moneda distintos, checkout expirado o factura no aprobada nunca habilitan cuota. Las reservas históricas sin términos verificables se expiran por migración. Renovaciones fallidas, cancelaciones, reembolsos, contracargos, períodos de gracia y bajas quedan fuera de este work unit: requieren su propia decisión comercial.
+
+**Fuentes oficiales**: [Webhooks de Mercado Pago](https://www.mercadopago.com.ar/developers/es/docs/checkout-bricks/additional-content/your-integrations/notifications/webhooks) y [consulta de pago autorizado](https://www.mercadopago.com.ar/developers/es/reference/online-payments/subscriptions/get-authorized-payment/get).

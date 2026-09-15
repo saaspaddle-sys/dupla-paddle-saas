@@ -531,6 +531,11 @@ model SubscriptionCheckout {
   provider PaymentProvider @default(mercado_pago)
   reference String @unique
   targetPlan SubscriptionPlan @map("target_plan")
+  /// Precio congelado al reservar el checkout. No se vuelve a leer desde
+  /// configuraciÃ³n al procesar un cobro, porque un cambio de precios no puede
+  /// reinterpretar una autorizaciÃ³n ya emitida.
+  amount Decimal @db.Decimal(12, 2)
+  currency String
   providerPreapprovalId String? @unique @map("provider_preapproval_id")
   providerStatus String? @map("provider_status")
   // A reservation starts recoverable so an unknown provider outcome cannot

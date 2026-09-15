@@ -14,6 +14,7 @@ const config = {
       MERCADO_PAGO_BASIC_AMOUNT: '100',
       MERCADO_PAGO_CURRENCY: 'ARS',
       MERCADO_PAGO_BACK_URL: 'https://app.test/return',
+      MERCADO_PAGO_WEBHOOK_URL: 'https://api.test/webhooks/mercado-pago',
     };
     return values[key] as T | undefined;
   },
@@ -72,6 +73,7 @@ describe('SubscriptionsService checkout durability', () => {
           status: 'pending',
           initPoint: 'https://checkout.test',
         }),
+      getAuthorizedPayment: jest.fn(),
     };
     const service = new SubscriptionsService(prisma, config, provider);
 
@@ -103,6 +105,7 @@ describe('SubscriptionsService checkout durability', () => {
     } as unknown as PrismaService;
     const provider: MercadoPagoPreapprovalClient = {
       create: jest.fn().mockRejectedValue(new Error('transport timeout')),
+      getAuthorizedPayment: jest.fn(),
     };
     const service = new SubscriptionsService(prisma, config, provider);
 
@@ -129,6 +132,7 @@ describe('SubscriptionsService checkout durability', () => {
       create: jest
         .fn()
         .mockRejectedValue(new Error('Mercado Pago returned HTTP 409')),
+      getAuthorizedPayment: jest.fn(),
     };
     const service = new SubscriptionsService(prisma, config, provider);
 
@@ -154,6 +158,7 @@ describe('SubscriptionsService checkout durability', () => {
       create: jest
         .fn()
         .mockRejectedValue(new DefinitivePreapprovalRejectionError()),
+      getAuthorizedPayment: jest.fn(),
     };
     const service = new SubscriptionsService(prisma, config, provider);
 
@@ -184,6 +189,7 @@ describe('SubscriptionsService checkout durability', () => {
       create: jest
         .fn()
         .mockRejectedValue(new DefinitivePreapprovalRejectionError()),
+      getAuthorizedPayment: jest.fn(),
     };
     const service = new SubscriptionsService(prisma, config, provider);
 

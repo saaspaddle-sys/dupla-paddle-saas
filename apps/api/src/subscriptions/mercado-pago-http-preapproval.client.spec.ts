@@ -16,6 +16,7 @@ const input = {
   amount: 100,
   currencyId: 'ARS',
   backUrl: 'https://app.test/return',
+  notificationUrl: 'https://api.test/webhooks/mercado-pago',
 };
 
 describe('MercadoPagoHttpPreapprovalClient outcome classification', () => {
