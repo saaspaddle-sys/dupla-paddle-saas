@@ -14,6 +14,12 @@ Este archivo conserva decisiones históricas, no una lista de funcionalidades en
 | Límites de los PRs     | [PRs por paquete](#prs-vigente)     |
 | Identificadores        | [UUIDv7](#ids-vigentes)             |
 
+## 2026-09-14 - Checkout recurrente pendiente no altera la suscripción efectiva
+
+**Decisión**: el backend inicia suscripciones mensuales con Mercado Pago Preapproval. Cada intento queda correlacionado por una referencia opaca generada en el servidor y una fila subscription_checkouts; el cliente no envia precio, moneda, owner, suscripción ni credenciales.
+
+**Consecuencias**: mientras el checkout esta pendiente, subscriptions.plan, status y max_tournaments no cambian. Solo un webhook verificado puede activar o degradar la suscripción. La reserva local comienza en `recovery_required`; cualquier timeout, fallo de transporte, respuesta 2xx malformada o 4xx sin una condición de cuerpo documentada que pruebe que no se creó el preapproval conserva esa reserva y responde `billing_checkout_recovery_required`, evitando un segundo preapproval accidental. Hoy el adaptador no clasifica ningún 4xx de Mercado Pago como definitivo. Existe como maximo un checkout activo o recuperable por suscripción: repetir el mismo plan reutiliza su URL una vez persistida y pedir otro plan devuelve checkout_pending_for_another_plan. Solo se borra la correlación ante un rechazo explícitamente definitivo que demuestra que no se creó el preapproval, o ante una cancelación verificada.
+
 ## 2026-09-14 — El email de Player es obligatorio para poder reclamar el perfil
 
 **Decisión**: `players.email` pasa a ser `NOT NULL` mediante una migración nueva. No hay datos de producción que conservar, por lo que se reemplaza la compatibilidad nullable prevista inicialmente para perfiles históricos. El registro público y el alta por organizador ya exigen email, así que ambos caminos satisfacen el invariante.

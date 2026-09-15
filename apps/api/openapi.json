@@ -1010,6 +1010,91 @@
           "Matches"
         ]
       }
+    },
+    "/subscriptions/me": {
+      "get": {
+        "operationId": "Subscriptions_findMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, or expired token (`unauthenticated`)."
+          },
+          "403": {
+            "description": "The account does not administer a club (`club_required`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Returns the effective subscription for the current club",
+        "tags": [
+          "Clubs"
+        ]
+      }
+    },
+    "/subscriptions/me/checkouts": {
+      "post": {
+        "operationId": "Subscriptions_createCheckout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCheckoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed (`validation`)."
+          },
+          "401": {
+            "description": "Missing, invalid, or expired token (`unauthenticated`)."
+          },
+          "403": {
+            "description": "The account does not administer a club (`club_required`)."
+          },
+          "409": {
+            "description": "A checkout is pending for another plan (`checkout_pending_for_another_plan`) or is being created (`checkout_in_progress`)."
+          },
+          "503": {
+            "description": "Billing configuration or checkout recovery is unavailable (`billing_not_configured`, `billing_checkout_recovery_required`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Starts or reuses the monthly Mercado Pago recurring checkout",
+        "tags": [
+          "Clubs"
+        ]
+      }
     }
   },
   "info": {
@@ -2013,6 +2098,82 @@
           "outcome",
           "winnerTeamId",
           "sets"
+        ]
+      },
+      "SubscriptionResponseDto": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "enum": [
+              "free",
+              "basic",
+              "pro"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "active",
+              "canceled"
+            ],
+            "type": "string"
+          },
+          "maxTournaments": {
+            "type": "number",
+            "example": 1
+          }
+        },
+        "required": [
+          "plan",
+          "status",
+          "maxTournaments"
+        ]
+      },
+      "CreateCheckoutDto": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "enum": [
+              "basic",
+              "pro"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan"
+        ]
+      },
+      "CheckoutResponseDto": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "enum": [
+              "free",
+              "basic",
+              "pro"
+            ],
+            "type": "string"
+          },
+          "reference": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "reused": {
+            "type": "boolean",
+            "description": "true when an existing pending checkout was reused"
+          }
+        },
+        "required": [
+          "plan",
+          "reference",
+          "checkoutUrl",
+          "reused"
         ]
       }
     }

@@ -15,6 +15,11 @@ interface LoginBody {
   accessToken: string;
 }
 
+interface PlayerListBody {
+  items: Array<{ id: string }>;
+  nextCursor: string | null;
+}
+
 describe('Organizer player directory (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -210,17 +215,21 @@ describe('Organizer player directory (e2e)', () => {
       .get(`/players?q=${searchTerm}&limit=1`)
       .set('Authorization', `Bearer ${token}`);
     expect(firstPage.status).toBe(200);
-    expect(firstPage.body.items).toHaveLength(1);
-    expect(firstPage.body.nextCursor).toBe(firstPage.body.items[0].id);
+    expect((firstPage.body as PlayerListBody).items).toHaveLength(1);
+    expect((firstPage.body as PlayerListBody).nextCursor).toBe(
+      (firstPage.body as PlayerListBody).items[0].id,
+    );
 
     const secondPage = await request(app.getHttpServer())
       .get(
-        `/players?q=${searchTerm}&limit=1&cursor=${firstPage.body.nextCursor}`,
+        `/players?q=${searchTerm}&limit=1&cursor=${(firstPage.body as PlayerListBody).nextCursor}`,
       )
       .set('Authorization', `Bearer ${token}`);
     expect(secondPage.status).toBe(200);
     expect(secondPage.body).toMatchObject({ nextCursor: null });
-    expect(secondPage.body.items).toHaveLength(1);
-    expect(secondPage.body.items[0].id).not.toBe(firstPage.body.items[0].id);
+    expect((secondPage.body as PlayerListBody).items).toHaveLength(1);
+    expect((secondPage.body as PlayerListBody).items[0].id).not.toBe(
+      (firstPage.body as PlayerListBody).items[0].id,
+    );
   });
 });

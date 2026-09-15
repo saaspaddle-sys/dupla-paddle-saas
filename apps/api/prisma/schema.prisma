@@ -149,6 +149,7 @@ model Subscription {
   // práctica — no se puede borrar un usuario que tenga club.
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   paymentEvents PaymentEvent[]
+  checkouts     SubscriptionCheckout[]
 
   @@map("subscriptions")
 }
@@ -522,4 +523,33 @@ model MatchSet {
   @@unique([matchId, setNumber])
   @@index([clubId])
   @@map("match_sets")
+}
+
+model SubscriptionCheckout {
+  id String @id @default(uuid(7)) @db.Uuid
+  subscriptionId String @map("subscription_id") @db.Uuid
+  provider PaymentProvider @default(mercado_pago)
+  reference String @unique
+  targetPlan SubscriptionPlan @map("target_plan")
+  providerPreapprovalId String? @unique @map("provider_preapproval_id")
+  providerStatus String? @map("provider_status")
+  // A reservation starts recoverable so an unknown provider outcome cannot
+  // accidentally create a second recurring preapproval for the same plan.
+  state CheckoutState @default(recovery_required)
+  initPoint String? @map("init_point")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  @@index([subscriptionId, targetPlan])
+  @@map("subscription_checkouts")
+}
+
+
+enum CheckoutState {
+  pending
+  recovery_required
+  completed
+  expired
+
+  @@map("checkout_state")
 }
