@@ -8,7 +8,6 @@ export default function HomePage() {
   //mock de pruebas para demostracion de tarjetas
   const features = [
     {
-      icon: "🏆",
       title: "Proximos Torneos",
       description:
         "Inscribite a categorias desde 7ma hasta 1ra. Revisa sedes, zonas y horarios de juego.",
@@ -16,7 +15,6 @@ export default function HomePage() {
       linkText: "Ver cronograma →",
     },
     {
-      icon: "🎾",
       title: "Partidos del Día",
       description:
         "Sigue los resultados en vivo, turnos de cancha y horarios de los complejos en tiempo real.",
@@ -24,7 +22,6 @@ export default function HomePage() {
       linkText: "Ver partidos →",
     },
     {
-      icon: "📊",
       title: "Ranking General",
       description:
         "Revisa la tabla de posiciones actualizada, puntos acumulados y lideres de cada categoria.",
@@ -38,7 +35,7 @@ export default function HomePage() {
       <Header />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20">
-        <section className="relative overflow-hidden rounded-xl bg-deep-onyx p-8 md:p-12 text-white grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+        <section className="relative overflow-hidden rounded-xl bg-deep-onyx p-8 md:p-12 text-white grid grid-cols-1 md:grid-cols-2 gap-8 items-center mt-8">
           {/*Columna izquierda, logo e informacion */}
           <div className="relative z-10 flex flex-col items-center gap-4 text-left">
             <div className="relative h-28 w-28 overflow-hidden rounded-full border-2 border-gray-700 shadow-lg md:h-40 md:w-40">
@@ -97,7 +94,6 @@ export default function HomePage() {
             {features.map((item, index) => (
               <Card
                 key={index}
-                icon={item.icon}
                 title={item.title}
                 description={item.description}
                 href={item.href}

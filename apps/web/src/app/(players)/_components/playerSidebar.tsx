@@ -7,7 +7,6 @@ import { logoutAction } from "@/app/(auth)/login/logout-action";
 import CreateClubButton from "./createClubButton";
 import { useAuth } from "@/context/AuthContext";
 
-
 export default function PlayerSidebar() {
   const pathname = usePathname();
   const router = useRouter(); //permite navegar despues del logout
@@ -17,10 +16,12 @@ export default function PlayerSidebar() {
   const { user, isLoading } = useAuth();
 
   const player = user?.player;
-  const hasClub = Boolean(user?.club)
+  const hasClub = Boolean(user?.club);
 
   // Formateo de datos con fallback defensivo mientras carga o si faltan datos
-  const fullName = player ? `${player.firstName} ${player.lastName}` : "Cargando...";
+  const fullName = player
+    ? `${player.firstName} ${player.lastName}`
+    : "Cargando...";
   const categoryText = player?.category ? `${player.category}` : "Jugador";
   const initials = player
     ? `${player.firstName[0]}${player.lastName[0]}`.toUpperCase()
@@ -129,10 +130,11 @@ export default function PlayerSidebar() {
               <Link
                 key={item.ruta}
                 href={item.ruta}
-                className={`flex items-center gap-3 px-4 py-3 rounded-2xl font-extrabold text-xs transition-all ${estaActivo
-                  ? "bg-padel-green text-deep-onyx shadow-md"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/60"
-                  }`}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl font-extrabold text-xs transition-all ${
+                  estaActivo
+                    ? "bg-padel-green text-deep-onyx shadow-md"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800/60"
+                }`}
               >
                 {item.icono}
                 <span>{item.nombre}</span>

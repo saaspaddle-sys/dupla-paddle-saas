@@ -4,8 +4,6 @@
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 
- 
-
 export default function PlayerDashboardPage() {
   // Mock de datos del jugador logueado
   const jugador = {
@@ -21,15 +19,16 @@ export default function PlayerDashboardPage() {
       estado: "Inscripto", // este estado debe ser un quizas un Enum inscripto / No inscripto que debe traerse desde la DB. hablar con TOMY
     },
   };
-  
+
   // Consumimos el contexto global de auth
   const { user, isLoading } = useAuth();
   const player = user?.player;
 
   // Formateo de datos con fallback defensivo mientras carga o si faltan datos
-  const fullName = player ? `${player.firstName} ${player.lastName}` : "Cargando...";
+  const fullName = player
+    ? `${player.firstName} ${player.lastName}`
+    : "Cargando...";
   const categoryText = player?.category ? `${player.category}` : "Jugador";
-
 
   return (
     <div className="space-y-6 p-6 md:p-8 max-w-7xl ">
@@ -44,8 +43,10 @@ export default function PlayerDashboardPage() {
           </h1>
           <p className="text-gray-400 text-xs md:text-sm mt-1">
             Categoría:{" "}
-            <strong className="text-white">{isLoading?"Cargando..." : categoryText }</strong> •
-            Puntos:{" "}
+            <strong className="text-white">
+              {isLoading ? "Cargando..." : categoryText}
+            </strong>{" "}
+            • Puntos:{" "}
             <strong className="text-padel-green">{jugador.puntos} pts</strong>
           </p>
         </div>

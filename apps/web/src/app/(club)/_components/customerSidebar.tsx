@@ -43,11 +43,11 @@ export default function CustomerSidebar() {
   // Iniciales del club (o de la persona responsable si falta el club)
   const initials = club?.name
     ? club.name
-      .split(" ")
-      .map((word) => word[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase()
+        .split(" ")
+        .map((word) => word[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
     : player
       ? `${player.firstName[0]}${player.lastName[0]}`.toUpperCase()
       : "--";
@@ -151,10 +151,11 @@ export default function CustomerSidebar() {
               <Link
                 key={item.ruta}
                 href={item.ruta}
-                className={`flex items-center gap-3 px-4 py-3 rounded-2xl font-extrabold text-xs transition-all ${estaActivo
-                  ? "bg-padel-green text-deep-onyx shadow-md"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/60"
-                  }`}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl font-extrabold text-xs transition-all ${
+                  estaActivo
+                    ? "bg-padel-green text-deep-onyx shadow-md"
+                    : "text-gray-400 hover:text-white hover:bg-gray-800/60"
+                }`}
               >
                 {item.icono}
                 <span>{item.nombre}</span>
