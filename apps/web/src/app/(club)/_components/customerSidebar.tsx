@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { logoutAction } from "@/app/(auth)/login/logout-action";
+import { useAuth } from "@/context/AuthContext";
 
 function MenuIcon({ children }: { children: ReactNode }) {
   return (
@@ -29,6 +30,27 @@ export default function CustomerSidebar() {
   const pathname = usePathname();
   const router = useRouter(); //permite navegar despues del logout
   const [isLoggingOut, startLogout] = useTransition(); // permite ejecutar la operacion asuncrona sin bloquear la interface.Tambien proporciona isLoggingOut, que indica si el proceso esta en curso
+
+  // Consumimos el contexto global de autenticación
+  const { user, isLoading } = useAuth();
+
+  const club = user?.club;
+  const player = user?.player;
+
+  // Formateo del nombre del club
+  const clubName = club?.name || "Sin Club asignado";
+
+  // Iniciales del club (o de la persona responsable si falta el club)
+  const initials = club?.name
+    ? club.name
+        .split(" ")
+        .map((word) => word[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : player
+      ? `${player.firstName[0]}${player.lastName[0]}`.toUpperCase()
+      : "--";
 
   const menuItems = [
     {
@@ -142,17 +164,27 @@ export default function CustomerSidebar() {
           })}
         </nav>
       </div>
+      <div className="mt-auto pt-4">
+        <Link
+          className="w-full flex items-center justify-center gap-2 bg-padel-green hover:bg-[#b8e600] text-deep-onyx text-sm font-black py-3 px-4 rounded-2xl shadow-md transition-all cursor-pointer mb-4"
+          href="/player-dashboard"
+        >
+          🡸 Panel Jugador
+        </Link>
+      </div>
 
       <div className="pt-6 border-t border-gray-800/80 space-y-3">
         <div className="flex items-center gap-3 px-2">
           <div className="w-9 h-9 rounded-xl bg-padel-green/20 border border-padel-green/40 flex items-center justify-center text-padel-green font-black text-xs">
-            JS
+            {isLoading ? "..." : initials}
           </div>
           <div className="overflow-hidden">
             <h4 className="text-xs font-black text-white truncate leading-tight">
-              Club Juarense
+              {isLoading ? "Cargando..." : clubName}
             </h4>
-            <p className="text-[10px] font-medium text-gray-400 truncate mt-0.5" />
+            <p className="text-[11px] font-medium text-gray-400 truncate mt-0.5">
+              {club?.status ? `Estado: ${club.status}` : ""}
+            </p>
           </div>
         </div>
 

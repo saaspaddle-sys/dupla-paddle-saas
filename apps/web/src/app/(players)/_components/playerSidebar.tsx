@@ -5,15 +5,31 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { logoutAction } from "@/app/(auth)/login/logout-action";
 import CreateClubButton from "./createClubButton";
+import { useAuth } from "@/context/AuthContext";
 
-interface PlayerSidebarProps {
+export default function PlayerSidebar({
+  hasClub: hasClubFromServer,
+}: {
   hasClub: boolean;
-}
-
-export default function PlayerSidebar({ hasClub }: PlayerSidebarProps) {
+}) {
   const pathname = usePathname();
   const router = useRouter(); //permite navegar despues del logout
   const [isLoggingOut, startLogout] = useTransition(); // permite ejecutar la operacion asuncrona sin bloquear la interface.Tambien proporciona isLoggingOut, que indica si el proceso esta en curso
+
+  // Consumimos el contexto global de auth
+  const { user, isLoading } = useAuth();
+
+  const player = user?.player;
+  const hasClub = hasClubFromServer || Boolean(user?.club);
+
+  // Formateo de datos con fallback defensivo mientras carga o si faltan datos
+  const fullName = player
+    ? `${player.firstName} ${player.lastName}`
+    : "Cargando...";
+  const categoryText = player?.category ? `${player.category}` : "Jugador";
+  const initials = player
+    ? `${player.firstName[0]}${player.lastName[0]}`.toUpperCase()
+    : "--";
 
   // Rutas de navegación del panel de jugador
   const menuItems = [
@@ -138,14 +154,14 @@ export default function PlayerSidebar({ hasClub }: PlayerSidebarProps) {
       <div className="pt-6 border-t border-gray-800/80 space-y-3">
         <div className="flex items-center gap-3 px-2">
           <div className="w-9 h-9 rounded-xl bg-padel-green/20 border border-padel-green/40 flex items-center justify-center text-padel-green font-black text-xs">
-            JS
+            {isLoading ? "..." : initials}
           </div>
           <div className="overflow-hidden">
             <h4 className="text-xs font-black text-white truncate leading-tight">
-              Julieta Sak
+              {isLoading ? "Cargando..." : fullName}
             </h4>
-            <p className="text-[10px] font-medium text-gray-400 truncate mt-0.5">
-              4ta Damas
+            <p className="text-[11px] font-medium text-gray-400 truncate mt-0.5">
+              {isLoading ? "Cargando..." : categoryText}
             </p>
           </div>
         </div>

@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 
 export default function PlayerDashboardPage() {
   // Mock de datos del jugador logueado
@@ -19,6 +20,16 @@ export default function PlayerDashboardPage() {
     },
   };
 
+  // Consumimos el contexto global de auth
+  const { user, isLoading } = useAuth();
+  const player = user?.player;
+
+  // Formateo de datos con fallback defensivo mientras carga o si faltan datos
+  const fullName = player
+    ? `${player.firstName} ${player.lastName}`
+    : "Cargando...";
+  const categoryText = player?.category ? `${player.category}` : "Jugador";
+
   return (
     <div className="space-y-6 p-6 md:p-8 max-w-7xl ">
       {/* Saludo y Resumen Rápido */}
@@ -28,12 +39,14 @@ export default function PlayerDashboardPage() {
             Panel de Jugador
           </span>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight mt-1">
-            ¡Hola, {jugador.nombre}! 👋
+            ¡Hola, {isLoading ? "Cargango..." : fullName} ! 👋
           </h1>
           <p className="text-gray-400 text-xs md:text-sm mt-1">
             Categoría:{" "}
-            <strong className="text-white">{jugador.categoria}</strong> •
-            Puntos:{" "}
+            <strong className="text-white">
+              {isLoading ? "Cargando..." : categoryText}
+            </strong>{" "}
+            • Puntos:{" "}
             <strong className="text-padel-green">{jugador.puntos} pts</strong>
           </p>
         </div>
