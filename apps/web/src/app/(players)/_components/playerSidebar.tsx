@@ -7,7 +7,11 @@ import { logoutAction } from "@/app/(auth)/login/logout-action";
 import CreateClubButton from "./createClubButton";
 import { useAuth } from "@/context/AuthContext";
 
-export default function PlayerSidebar() {
+export default function PlayerSidebar({
+  hasClub: hasClubFromServer,
+}: {
+  hasClub: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter(); //permite navegar despues del logout
   const [isLoggingOut, startLogout] = useTransition(); // permite ejecutar la operacion asuncrona sin bloquear la interface.Tambien proporciona isLoggingOut, que indica si el proceso esta en curso
@@ -16,7 +20,7 @@ export default function PlayerSidebar() {
   const { user, isLoading } = useAuth();
 
   const player = user?.player;
-  const hasClub = Boolean(user?.club);
+  const hasClub = hasClubFromServer || Boolean(user?.club);
 
   // Formateo de datos con fallback defensivo mientras carga o si faltan datos
   const fullName = player
