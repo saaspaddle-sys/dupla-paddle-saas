@@ -5,13 +5,10 @@ import { ClubsController } from './clubs.controller';
 import { ClubsService } from './clubs.service';
 
 /**
- * `subscriptions` no tiene módulo propio: vive dentro de `ClubsService` y
- * no expone rutas. La suscripción se crea en la misma transacción de Prisma
- * que el club, y separarla obligaría a pasar el handle `tx` a través del
- * límite de módulo (`SubscriptionsService.create(tx, ...)`), que es peor
- * que la duplicación que evita. Cuando entre Mercado Pago y la suscripción
- * gane endpoints propios, nace `src/subscriptions/` y `ClubsService` la
- * consume por `exports` — cambio aditivo.
+ * `ClubsService` conserva únicamente la creación de la suscripción gratuita:
+ * ocurre en la misma transacción de Prisma que el club y moverla obligaría a
+ * filtrar el handle `tx` a través del límite de módulo. El ciclo de vida de
+ * billing y sus rutas viven por separado en `SubscriptionsModule`.
  *
  * `AuthModule` se importa por `PassportModule`, que es lo que `AuthModule`
  * ya exporta con este caso escrito en su comentario. No hay ciclo:
@@ -22,9 +19,8 @@ import { ClubsService } from './clubs.service';
   imports: [PrismaModule, AuthModule],
   controllers: [ClubsController],
   providers: [ClubsService],
-  // Lo necesita el slice de torneos para leer `maxTournaments` al validar
-  // la cuota, y la regla de módulos prohíbe importar clases internas de
-  // otro módulo.
+  // Public service boundary for consumers that need club operations. Billing
+  // and tournament quota checks use their own transactional boundaries.
   exports: [ClubsService],
 })
 export class ClubsModule {}
