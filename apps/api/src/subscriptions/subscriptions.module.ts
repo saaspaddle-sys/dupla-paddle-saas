@@ -11,6 +11,7 @@ import {
 import { MERCADO_PAGO_PREAPPROVAL_CLIENT } from './mercado-pago-preapproval.client';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
+import { MercadoPagoReconciliationRunner } from './mercado-pago-reconciliation.runner';
 
 @Module({
   imports: [PrismaModule, AuthModule],
@@ -20,6 +21,7 @@ import { SubscriptionsService } from './subscriptions.service';
     MercadoPagoHttpPreapprovalClient,
     MercadoPagoHmacWebhookVerifier,
     MercadoPagoWebhookService,
+    MercadoPagoReconciliationRunner,
     {
       provide: MERCADO_PAGO_PREAPPROVAL_CLIENT,
       useExisting: MercadoPagoHttpPreapprovalClient,

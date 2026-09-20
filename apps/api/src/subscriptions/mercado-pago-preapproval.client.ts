@@ -28,16 +28,21 @@ export interface CreatePreapprovalInput {
   amount: number;
   currencyId: string;
   backUrl: string;
-  notificationUrl: string;
 }
 
 export interface AuthorizedPayment {
   id: string;
-  status: string;
+  /** Status of the invoice returned by /authorized_payments/{id}. */
+  invoiceStatus: string;
+  /** Status of the nested payment. Only `approved` grants an entitlement. */
+  paymentStatus: string;
   preapprovalId: string;
-  amount: number;
+  /** Keep Mercado Pago's decimal representation exact until Prisma compares it. */
+  amount: string | number;
   currencyId: string;
   externalReference: string;
+  /** Canonical provider timestamp, never the webhook receipt time. */
+  paidAt: Date;
 }
 
 export interface CreatedPreapproval {
@@ -49,4 +54,8 @@ export interface CreatedPreapproval {
 export interface MercadoPagoPreapprovalClient {
   create(input: CreatePreapprovalInput): Promise<CreatedPreapproval>;
   getAuthorizedPayment(id: string): Promise<AuthorizedPayment>;
+  cancelPreapproval?(id: string): Promise<void>;
+  findPreapprovalByReference?(
+    reference: string,
+  ): Promise<CreatedPreapproval | null>;
 }

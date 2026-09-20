@@ -42,12 +42,18 @@ describe('Subscriptions checkout (e2e)', () => {
   const provider: jest.Mocked<MercadoPagoPreapprovalClient> = {
     create: jest.fn(),
     getAuthorizedPayment: jest.fn(),
+    cancelPreapproval: jest.fn(),
+    findPreapprovalByReference: jest.fn(),
   };
   const verifier: jest.Mocked<MercadoPagoWebhookVerifier> = {
     verify: jest.fn().mockReturnValue(true),
   };
 
   beforeAll(async () => {
+    // The reconciliation runner is intentionally enabled in production when
+    // billing is configured. Keep the E2E configuration complete so it does
+    // not exercise a half-configured application lifecycle.
+    process.env.MERCADO_PAGO_ACCESS_TOKEN = 'test-access-token';
     process.env.MERCADO_PAGO_BASIC_AMOUNT = '100';
     process.env.MERCADO_PAGO_PRO_AMOUNT = '200';
     process.env.MERCADO_PAGO_CURRENCY = 'ARS';
@@ -59,6 +65,13 @@ describe('Subscriptions checkout (e2e)', () => {
       status: 'pending',
       initPoint: `https://checkout.test/${suffix}`,
     });
+    // The worker can reconcile durable events created by other serial E2E
+    // cases. Its provider contract must remain defined outside each test.
+    provider.getAuthorizedPayment.mockRejectedValue(
+      new ProviderUnavailableError(),
+    );
+    (provider.cancelPreapproval as jest.Mock).mockResolvedValue(undefined);
+    (provider.findPreapprovalByReference as jest.Mock).mockResolvedValue(null);
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -110,6 +123,9 @@ describe('Subscriptions checkout (e2e)', () => {
 
   afterAll(async () => {
     await prisma.club.deleteMany({ where: { ownerId } });
+    await prisma.subscriptionPreapprovalTombstone.deleteMany({
+      where: { subscription: { userId: ownerId } },
+    });
     await prisma.player.deleteMany({ where: { dni: { startsWith: '6' } } });
     await prisma.player.deleteMany({ where: { dni: { startsWith: '7' } } });
     await prisma.user.deleteMany({
@@ -189,24 +205,33 @@ describe('Subscriptions checkout (e2e)', () => {
     const eventId = `event-approved-${suffix}`;
     provider.getAuthorizedPayment.mockResolvedValue({
       id: `payment-approved-${suffix}`,
-      status: 'approved',
+      invoiceStatus: 'processed',
+      paymentStatus: 'approved',
       preapprovalId: `preapproval-${suffix}`,
       amount: 100,
       currencyId: 'ARS',
       externalReference: checkout.reference,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     const payload = {
       id: eventId,
       type: 'subscription_authorized_payment',
+      action: 'payment.created',
+      live_mode: false,
+      user_id: 123456,
+      api_version: 'v1',
+      date_created: '2026-09-01T00:00:00.000Z',
       data: { id: `payment-approved-${suffix}` },
     };
     const first = await request(app.getHttpServer())
       .post('/webhooks/mercado-pago')
+      .query({ 'data.id': payload.data.id })
       .set('x-signature', 'test-signature')
       .set('x-request-id', `request-${suffix}`)
       .send(payload);
     const replay = await request(app.getHttpServer())
       .post('/webhooks/mercado-pago')
+      .query({ 'data.id': payload.data.id })
       .set('x-signature', 'test-signature')
       .set('x-request-id', `request-${suffix}`)
       .send(payload);
@@ -255,7 +280,55 @@ describe('Subscriptions checkout (e2e)', () => {
     expect(await prisma.paymentEvent.count()).toBe(before);
   });
 
+  it('accepts the documented preapproval envelope before rejecting unsigned deliveries', async () => {
+    const payload = {
+      action: 'updated',
+      application_id: '7479211178084847',
+      data: { id: '123456' },
+      date: '2021-11-01T02:02:02Z',
+      entity: 'preapproval',
+      id: `preapproval-notification-${suffix}`,
+      type: 'subscription_preapproval',
+      version: 8,
+    };
+    const eventsBefore = await prisma.paymentEvent.count();
+    const providerCallsBefore = provider.getAuthorizedPayment.mock.calls.length;
+
+    const missingSignature = await request(app.getHttpServer())
+      .post('/webhooks/mercado-pago')
+      .query({ 'data.id': payload.data.id })
+      .set('x-request-id', `missing-signature-${suffix}`)
+      .send(payload);
+
+    verifier.verify.mockReturnValueOnce(false);
+    const invalidSignature = await request(app.getHttpServer())
+      .post('/webhooks/mercado-pago')
+      .query({ 'data.id': payload.data.id })
+      .set('x-signature', 'invalid')
+      .set('x-request-id', `invalid-signature-${suffix}`)
+      .send(payload);
+
+    // Both requests reached the signed webhook boundary: an undeclared field
+    // would instead fail validation with 400 before the HMAC check.
+    expect(missingSignature.status).toBe(401);
+    expect(invalidSignature.status).toBe(401);
+    expect(await prisma.paymentEvent.count()).toBe(eventsBefore);
+    expect(provider.getAuthorizedPayment.mock.calls).toHaveLength(
+      providerCallsBefore,
+    );
+  });
+
   it('does not activate mismatched or non-approved canonical charges', async () => {
+    // A replacement checkout is only legal after the active mandate is
+    // cancelled. This exercises the real lifecycle rather than constructing a
+    // second active recurring subscription in the fixture.
+    expect(
+      (
+        await request(app.getHttpServer())
+          .post('/subscriptions/me/cancel')
+          .set('Authorization', `Bearer ${token}`)
+      ).status,
+    ).toBe(200);
     const subscription = await prisma.subscription.findUniqueOrThrow({
       where: { userId: ownerId },
       select: { id: true },
@@ -273,27 +346,33 @@ describe('Subscriptions checkout (e2e)', () => {
     });
     provider.getAuthorizedPayment.mockResolvedValueOnce({
       id: `payment-mismatch-${suffix}`,
-      status: 'approved',
+      invoiceStatus: 'processed',
+      paymentStatus: 'approved',
       preapprovalId: `mismatch-preapproval-${suffix}`,
       amount: 199,
       currencyId: 'ARS',
       externalReference: `mismatch-${suffix}`,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     provider.getAuthorizedPayment.mockResolvedValueOnce({
       id: `payment-pending-${suffix}`,
-      status: 'pending',
+      invoiceStatus: 'pending',
+      paymentStatus: 'pending',
       preapprovalId: `mismatch-preapproval-${suffix}`,
       amount: 200,
       currencyId: 'ARS',
       externalReference: `mismatch-${suffix}`,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     provider.getAuthorizedPayment.mockResolvedValueOnce({
       id: `payment-reference-mismatch-${suffix}`,
-      status: 'approved',
+      invoiceStatus: 'processed',
+      paymentStatus: 'approved',
       preapprovalId: `mismatch-preapproval-${suffix}`,
       amount: 200,
       currencyId: 'ARS',
       externalReference: `other-reference-${suffix}`,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     for (const [id, resource] of [
       [`mismatch-event-${suffix}`, `payment-mismatch-${suffix}`],
@@ -307,6 +386,7 @@ describe('Subscriptions checkout (e2e)', () => {
         (
           await request(app.getHttpServer())
             .post('/webhooks/mercado-pago')
+            .query({ 'data.id': resource })
             .set('x-signature', 'test')
             .set('x-request-id', id)
             .send({
@@ -315,14 +395,14 @@ describe('Subscriptions checkout (e2e)', () => {
               data: { id: resource },
             })
         ).status,
-      ).toBe(200);
+      ).toBe(503);
     }
     expect(
       await prisma.subscription.findUniqueOrThrow({
         where: { userId: ownerId },
         select: { plan: true, maxTournaments: true },
       }),
-    ).toEqual({ plan: 'basic', maxTournaments: 3 });
+    ).toEqual({ plan: 'free', maxTournaments: 1 });
     await prisma.subscriptionCheckout.updateMany({
       where: {
         subscriptionId: subscription.id,
@@ -332,16 +412,19 @@ describe('Subscriptions checkout (e2e)', () => {
     });
     provider.getAuthorizedPayment.mockResolvedValueOnce({
       id: `payment-expired-${suffix}`,
-      status: 'approved',
+      invoiceStatus: 'processed',
+      paymentStatus: 'approved',
       preapprovalId: `mismatch-preapproval-${suffix}`,
       amount: 200,
       currencyId: 'ARS',
       externalReference: `mismatch-${suffix}`,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     expect(
       (
         await request(app.getHttpServer())
           .post('/webhooks/mercado-pago')
+          .query({ 'data.id': `payment-expired-${suffix}` })
           .set('x-signature', 'test')
           .set('x-request-id', `expired-event-${suffix}`)
           .send({
@@ -350,13 +433,13 @@ describe('Subscriptions checkout (e2e)', () => {
             data: { id: `payment-expired-${suffix}` },
           })
       ).status,
-    ).toBe(200);
+    ).toBe(503);
     expect(
       await prisma.subscription.findUniqueOrThrow({
         where: { userId: ownerId },
         select: { plan: true, maxTournaments: true },
       }),
-    ).toEqual({ plan: 'basic', maxTournaments: 3 });
+    ).toEqual({ plan: 'free', maxTournaments: 1 });
   });
 
   it('resumes an inserted event and serializes concurrent duplicate delivery', async () => {
@@ -381,6 +464,7 @@ describe('Subscriptions checkout (e2e)', () => {
     );
     const interrupted = await request(app.getHttpServer())
       .post('/webhooks/mercado-pago')
+      .query({ 'data.id': `recovery-payment-${suffix}` })
       .set('x-signature', 'test')
       .set('x-request-id', recoveryEvent)
       .send({
@@ -402,31 +486,39 @@ describe('Subscriptions checkout (e2e)', () => {
     ).toEqual({ processedAt: null });
     provider.getAuthorizedPayment.mockResolvedValueOnce({
       id: `recovery-payment-${suffix}`,
-      status: 'approved',
+      invoiceStatus: 'processed',
+      paymentStatus: 'approved',
       preapprovalId: `recovery-preapproval-${suffix}`,
       amount: 200,
       currencyId: 'ARS',
       externalReference: `recovery-${suffix}`,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
-    expect(
-      (
-        await request(app.getHttpServer())
-          .post('/webhooks/mercado-pago')
-          .set('x-signature', 'test')
-          .set('x-request-id', recoveryEvent)
-          .send({
-            id: recoveryEvent,
-            type: 'subscription_authorized_payment',
-            data: { id: `recovery-payment-${suffix}` },
-          })
-      ).status,
-    ).toBe(200);
+    const resumed = await request(app.getHttpServer())
+      .post('/webhooks/mercado-pago')
+      .query({ 'data.id': `recovery-payment-${suffix}` })
+      .set('x-signature', 'test')
+      .set('x-request-id', recoveryEvent)
+      .send({
+        id: recoveryEvent,
+        type: 'subscription_authorized_payment',
+        data: { id: `recovery-payment-${suffix}` },
+      });
+    expect(resumed.status).toBe(200);
     expect(
       await prisma.subscription.findUniqueOrThrow({
         where: { userId: ownerId },
         select: { plan: true, maxTournaments: true },
       }),
     ).toEqual({ plan: 'pro', maxTournaments: 12 });
+
+    expect(
+      (
+        await request(app.getHttpServer())
+          .post('/subscriptions/me/cancel')
+          .set('Authorization', `Bearer ${token}`)
+      ).status,
+    ).toBe(200);
 
     await prisma.subscriptionCheckout.create({
       data: {
@@ -442,15 +534,18 @@ describe('Subscriptions checkout (e2e)', () => {
     const eventId = `concurrent-event-${suffix}`;
     provider.getAuthorizedPayment.mockResolvedValue({
       id: `concurrent-payment-${suffix}`,
-      status: 'approved',
+      invoiceStatus: 'processed',
+      paymentStatus: 'approved',
       preapprovalId: `concurrent-preapproval-${suffix}`,
       amount: 100,
       currencyId: 'ARS',
       externalReference: `concurrent-${suffix}`,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     const delivery = () =>
       request(app.getHttpServer())
         .post('/webhooks/mercado-pago')
+        .query({ 'data.id': `concurrent-payment-${suffix}` })
         .set('x-signature', 'test')
         .set('x-request-id', eventId)
         .send({
@@ -476,6 +571,13 @@ describe('Subscriptions checkout (e2e)', () => {
       where: { userId: ownerId },
       select: { id: true },
     });
+    expect(
+      (
+        await request(app.getHttpServer())
+          .post('/subscriptions/me/cancel')
+          .set('Authorization', `Bearer ${token}`)
+      ).status,
+    ).toBe(200);
     await prisma.subscriptionCheckout.deleteMany({
       where: { subscriptionId: subscription.id },
     });
@@ -532,16 +634,19 @@ describe('Subscriptions checkout (e2e)', () => {
     });
     provider.getAuthorizedPayment.mockResolvedValueOnce({
       id: `legacy-payment-${suffix}`,
-      status: 'approved',
+      invoiceStatus: 'processed',
+      paymentStatus: 'approved',
       preapprovalId: `legacy-preapproval-${suffix}`,
       amount: 0,
       currencyId: '',
       externalReference: `legacy-${suffix}`,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
     expect(
       (
         await request(app.getHttpServer())
           .post('/webhooks/mercado-pago')
+          .query({ 'data.id': `legacy-payment-${suffix}` })
           .set('x-signature', 'test')
           .set('x-request-id', `legacy-event-${suffix}`)
           .send({
@@ -550,13 +655,18 @@ describe('Subscriptions checkout (e2e)', () => {
             data: { id: `legacy-payment-${suffix}` },
           })
       ).status,
-    ).toBe(200);
+    ).toBe(503);
     expect(
       await prisma.subscription.findUniqueOrThrow({
         where: { userId: ownerId },
         select: { plan: true, maxTournaments: true },
       }),
-    ).toEqual({ plan: 'basic', maxTournaments: 3 });
+    ).toEqual({ plan: 'free', maxTournaments: 1 });
+    provider.create.mockResolvedValueOnce({
+      id: `fresh-preapproval-${suffix}`,
+      status: 'pending',
+      initPoint: `https://checkout.test/fresh-${suffix}`,
+    });
     const fresh = await request(app.getHttpServer())
       .post('/subscriptions/me/checkouts')
       .set('Authorization', `Bearer ${token}`)

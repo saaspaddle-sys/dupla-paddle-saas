@@ -141,6 +141,12 @@ model Subscription {
   // lectura: mientras el cobro sea manual hace falta poder dar excepciones
   // a una cuenta puntual sin inventar un plan nuevo.
   maxTournaments Int      @map("max_tournaments")
+  /// One provider mandate is the source of truth for recurring charges. A
+  /// checkout is only an onboarding attempt and must never be used as that
+  /// identity after its first payment.
+  providerPreapprovalId String?   @unique @map("provider_preapproval_id")
+  providerStatus        String?   @map("provider_status")
+  currentPeriodEndsAt   DateTime? @map("current_period_ends_at") @db.Timestamptz(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -150,8 +156,27 @@ model Subscription {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   paymentEvents PaymentEvent[]
   checkouts     SubscriptionCheckout[]
+  canceledPreapprovals SubscriptionPreapprovalTombstone[]
 
   @@map("subscriptions")
+}
+
+/// A cancelled provider mandate remains auditable after the live subscription
+/// forgets it. Late invoices for this id are terminal no-ops, not indefinitely
+/// retryable events.
+model SubscriptionPreapprovalTombstone {
+  id                    String   @id @default(uuid(7)) @db.Uuid
+  provider              PaymentProvider
+  providerPreapprovalId String   @map("provider_preapproval_id")
+  subscriptionId        String   @map("subscription_id") @db.Uuid
+  canceledAt            DateTime @default(now()) @map("canceled_at") @db.Timestamptz(3)
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  // PostgreSQL shortened the original physical name to 63 bytes. Pin it so
+  // Prisma does not propose a rename on every existing database.
+  @@unique([provider, providerPreapprovalId], map: "subscription_preapproval_tombstones_provider_provider_preapprov")
+  @@map("subscription_preapproval_tombstones")
 }
 
 /// `free` es el plan de entrada de todo club: una llave activa, suficiente
@@ -170,6 +195,7 @@ enum SubscriptionPlan {
 enum SubscriptionStatus {
   pending
   active
+  past_due
   canceled
 
   @@map("subscription_status")
@@ -222,6 +248,10 @@ model PaymentEvent {
 
   receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
   processedAt DateTime? @map("processed_at") @db.Timestamptz(3)
+  /// A retryable delivery remains unprocessed. Persisting why it could not be
+  /// correlated makes reconciliation observable without acknowledging it as a
+  /// terminal no-op.
+  lastErrorAt DateTime? @map("last_error_at") @db.Timestamptz(3)
 
   /// A qué suscripción se aplicó. Nullable: la fila nace antes de que el
   /// evento se resuelva, y una notificación puede no corresponder a
@@ -233,6 +263,7 @@ model PaymentEvent {
   /// `SELECT` previo: bajo concurrencia dos reintentos simultáneos leerían
   /// ambos "no existe" y aplicarían los dos.
   @@unique([provider, externalId])
+  @@unique([provider, type, resourceId])
   /// El efecto se aplica sobre el recurso, no sobre la notificación: MP
   /// manda varias notificaciones distintas sobre el mismo pago
   /// (`payment.created`, `payment.updated`), así que el handler también
@@ -547,6 +578,17 @@ model SubscriptionCheckout {
   subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   @@index([subscriptionId, targetPlan])
   @@map("subscription_checkouts")
+}
+
+/// Cross-instance lease for the in-process Nest reconciliation runner. The
+/// token means a stale instance cannot release another instance's lease.
+model BillingJobLock {
+  name        String   @id
+  ownerToken  String   @map("owner_token")
+  lockedUntil DateTime @map("locked_until") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("billing_job_locks")
 }
 
 

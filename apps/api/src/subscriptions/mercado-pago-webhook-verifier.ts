@@ -40,7 +40,14 @@ export class MercadoPagoHmacWebhookVerifier implements MercadoPagoWebhookVerifie
       !/^[a-f0-9]+$/i.test(received)
     )
       return false;
-    const manifest = `id:${input.dataId};request-id:${input.requestId};ts:${timestamp};`;
+    // Mercado Pago retries can be delayed. The HMAC, immutable event identity
+    // and processed-event fast path provide replay protection; rejecting an
+    // otherwise valid old delivery would lose a legitimate notification.
+    // The provider specifies lower-case `data.id` when it contains letters.
+    const dataId = /[a-z]/i.test(input.dataId)
+      ? input.dataId.toLowerCase()
+      : input.dataId;
+    const manifest = `id:${dataId};request-id:${input.requestId};ts:${timestamp};`;
     const expected = createHmac('sha256', secret)
       .update(manifest)
       .digest('hex');

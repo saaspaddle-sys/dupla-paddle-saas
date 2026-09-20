@@ -1,4 +1,11 @@
-import { Body, Controller, Headers, HttpCode, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiOkResponse,
   ApiOperation,
@@ -27,7 +34,8 @@ export class MercadoPagoWebhookController {
     @Body() payload: MercadoPagoWebhookDto,
     @Headers('x-signature') signature: string | undefined,
     @Headers('x-request-id') requestId: string | undefined,
+    @Query('data.id') queryDataId: string | undefined,
   ): Promise<void> {
-    return this.webhooks.receive(payload, signature, requestId);
+    return this.webhooks.receive(payload, signature, requestId, queryDataId);
   }
 }

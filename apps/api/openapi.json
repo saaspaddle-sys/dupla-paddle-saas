@@ -1096,10 +1096,37 @@
         ]
       }
     },
+    "/subscriptions/me/cancel": {
+      "post": {
+        "operationId": "Subscriptions_cancelMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Subscription was cancelled."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Cancels the active Mercado Pago recurring subscription",
+        "tags": [
+          "Clubs"
+        ]
+      }
+    },
     "/webhooks/mercado-pago": {
       "post": {
         "operationId": "MercadoPagoWebhook_receive",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "data.id",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1622,6 +1649,7 @@
             "enum": [
               "active",
               "pending",
+              "past_due",
               "canceled"
             ]
           },
@@ -2143,6 +2171,7 @@
             "enum": [
               "pending",
               "active",
+              "past_due",
               "canceled"
             ],
             "type": "string"
@@ -2226,6 +2255,30 @@
           },
           "action": {
             "type": "string"
+          },
+          "live_mode": {
+            "type": "boolean"
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "api_version": {
+            "type": "string"
+          },
+          "date_created": {
+            "type": "string"
+          },
+          "application_id": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
           },
           "data": {
             "$ref": "#/components/schemas/MercadoPagoWebhookDataDto"

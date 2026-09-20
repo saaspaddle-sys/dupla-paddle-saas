@@ -1,4 +1,12 @@
-﻿import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+﻿import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -77,5 +85,19 @@ export class SubscriptionsController {
   ): Promise<CheckoutResponseDto> {
     void clubId;
     return this.subscriptions.createCheckout(user.id, dto.plan);
+  }
+
+  @Post('me/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancels the active Mercado Pago recurring subscription',
+  })
+  @ApiOkResponse({ description: 'Subscription was cancelled.' })
+  cancelMine(
+    @CurrentUser() user: AuthenticatedUser,
+    @ClubId() clubId: string,
+  ): Promise<void> {
+    void clubId;
+    return this.subscriptions.cancelMine(user.id);
   }
 }

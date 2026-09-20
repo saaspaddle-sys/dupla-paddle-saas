@@ -32,4 +32,15 @@ describe('MercadoPagoHmacWebhookVerifier', () => {
       verifier.verify({ ...input, signature: 'ts=1,v1=not-a-hex-signature' }),
     ).toBe(false);
   });
+
+  it('accepts a valid delayed retry; event idempotency, not timestamp age, blocks replay', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-15T00:00:00.000Z'));
+    expect(
+      new MercadoPagoHmacWebhookVerifier(config).verify({
+        ...input,
+        signature: signature(),
+      }),
+    ).toBe(true);
+    jest.useRealTimers();
+  });
 });

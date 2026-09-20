@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CheckoutResponseDto } from './dto/checkout-response.dto';
 import { SubscriptionResponseDto } from './dto/subscription-response.dto';
 import {
+  AmbiguousPreapprovalCreationError,
   DefinitivePreapprovalRejectionError,
   MERCADO_PAGO_PREAPPROVAL_CLIENT,
 } from './mercado-pago-preapproval.client';
@@ -48,6 +49,21 @@ export class SubscriptionsService {
     });
     if (!subscription)
       throw new InternalServerErrorException('club scope without subscription');
+    // A completed checkout is historical. The mandate belongs to the
+    // subscription and must be cancelled explicitly before a replacement can
+    // be created, otherwise one owner can authorize two recurring charges.
+    if (subscription.providerPreapprovalId) {
+      throw new ConflictException({
+        code: 'active_subscription_must_be_cancelled',
+        message:
+          'cancel the active subscription before creating another checkout',
+      });
+    }
+    const pricing = this.pricingFor(targetPlan);
+    // Keep billing unavailable until inbound lifecycle notifications are
+    // configured, but Mercado Pago owns that URL in the webhook dashboard.
+    this.webhookUrl();
+    this.requireAccessToken();
     const pending = await this.prisma.subscriptionCheckout.findFirst({
       where: {
         subscriptionId: subscription.id,
@@ -55,6 +71,7 @@ export class SubscriptionsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
     if (pending) {
       if (pending.targetPlan !== targetPlan)
         throw new ConflictException({
@@ -62,11 +79,16 @@ export class SubscriptionsService {
           message: 'a checkout is already pending for another plan',
         });
       if (!pending.initPoint) {
-        if (pending.state === 'recovery_required')
+        if (pending.state === 'recovery_required') {
+          const recovered = await this.recoverPreapproval(pending.reference);
+          if (recovered) {
+            return this.persistPreapproval(pending.id, recovered, true);
+          }
           throw new ServiceUnavailableException({
             code: 'billing_checkout_recovery_required',
             message: 'checkout outcome is awaiting recovery',
           });
+        }
         throw new ConflictException({
           code: 'checkout_in_progress',
           message: 'a checkout is already being created',
@@ -79,7 +101,6 @@ export class SubscriptionsService {
         reused: true,
       };
     }
-    const pricing = this.pricingFor(targetPlan);
     const reference = randomUUID();
     let checkout: { id: string };
     try {
@@ -108,7 +129,6 @@ export class SubscriptionsService {
         amount: pricing.amount,
         currencyId: pricing.currency,
         backUrl: pricing.backUrl,
-        notificationUrl: this.webhookUrl(),
       });
     } catch (error) {
       if (error instanceof DefinitivePreapprovalRejectionError) {
@@ -127,14 +147,39 @@ export class SubscriptionsService {
           message: 'billing provider rejected checkout creation',
         });
       }
+      if (error instanceof AmbiguousPreapprovalCreationError) {
+        const recovered = await this.recoverPreapproval(reference);
+        if (recovered) {
+          return this.persistPreapproval(checkout.id, recovered, true);
+        }
+      }
       throw new ServiceUnavailableException({
         code: 'billing_checkout_recovery_required',
         message: 'checkout outcome is awaiting recovery',
       });
     }
+    return this.persistPreapproval(checkout.id, provider, false);
+  }
+
+  private async recoverPreapproval(
+    reference: string,
+  ): Promise<CreatedPreapproval | null> {
+    if (!this.mercadoPago.findPreapprovalByReference) return null;
+    try {
+      return await this.mercadoPago.findPreapprovalByReference(reference);
+    } catch {
+      return null;
+    }
+  }
+
+  private async persistPreapproval(
+    checkoutId: string,
+    provider: CreatedPreapproval,
+    reused: boolean,
+  ): Promise<CheckoutResponseDto> {
     try {
       const persisted = await this.prisma.subscriptionCheckout.update({
-        where: { id: checkout.id },
+        where: { id: checkoutId },
         data: {
           providerPreapprovalId: provider.id,
           providerStatus: provider.status,
@@ -146,7 +191,7 @@ export class SubscriptionsService {
         plan: persisted.targetPlan,
         reference: persisted.reference,
         checkoutUrl: persisted.initPoint!,
-        reused: false,
+        reused,
       };
     } catch {
       throw new ServiceUnavailableException({
@@ -154,6 +199,54 @@ export class SubscriptionsService {
         message: 'checkout was created and is awaiting recovery',
       });
     }
+  }
+
+  async cancelMine(userId: string): Promise<void> {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { userId },
+      select: { id: true, providerPreapprovalId: true },
+    });
+    if (!subscription)
+      throw new InternalServerErrorException('club scope without subscription');
+    if (!subscription.providerPreapprovalId) return;
+    if (!this.mercadoPago.cancelPreapproval)
+      throw new ServiceUnavailableException({
+        code: 'billing_provider_unavailable',
+        message: 'billing provider is unavailable',
+      });
+    try {
+      await this.mercadoPago.cancelPreapproval(
+        subscription.providerPreapprovalId,
+      );
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'billing_provider_unavailable',
+        message: 'billing provider is unavailable',
+      });
+    }
+    await this.prisma.$transaction(async (tx) => {
+      // Keep this identity after replacing the mandate. Provider deliveries are
+      // at-least-once and a late charge must be auditable, but never grant a
+      // newly re-subscribed account an old entitlement.
+      await tx.subscriptionPreapprovalTombstone.create({
+        data: {
+          provider: 'mercado_pago',
+          providerPreapprovalId: subscription.providerPreapprovalId!,
+          subscriptionId: subscription.id,
+        },
+      });
+      await tx.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          plan: 'free',
+          status: 'canceled',
+          maxTournaments: 1,
+          providerPreapprovalId: null,
+          providerStatus: 'cancelled',
+          currentPeriodEndsAt: null,
+        },
+      });
+    });
   }
 
   private webhookUrl(): string {
@@ -183,11 +276,36 @@ export class SubscriptionsService {
     const amount = Number(raw);
     const currency = this.config.get<string>('MERCADO_PAGO_CURRENCY');
     const backUrl = this.config.get<string>('MERCADO_PAGO_BACK_URL');
-    if (!Number.isFinite(amount) || amount <= 0 || !currency || !backUrl)
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !Number.isInteger(amount * 100) ||
+      !currency ||
+      !backUrl ||
+      !isHttpsUrl(backUrl)
+    )
       throw new ServiceUnavailableException({
         code: 'billing_not_configured',
         message: 'billing is not configured',
       });
     return { amount, currency, backUrl };
+  }
+
+  private requireAccessToken(): void {
+    if (!this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN')) {
+      throw new ServiceUnavailableException({
+        code: 'billing_not_configured',
+        message: 'billing is not configured',
+      });
+    }
+  }
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
   }
 }
