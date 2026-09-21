@@ -27,14 +27,23 @@ export interface CurrentUserPlayer {
   gender: string | null;
 }
 
+export interface CurrentUserClub {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+}
+
 export interface CurrentUser {
   id: string;
   email: string;
   player: CurrentUserPlayer | null;
+  club: CurrentUserClub | null;
 }
 
 // `GET /auth/me`: `player: null` significa que la cuenta no tiene un perfil
-// de jugador vinculado (staff de club, por ejemplo).
+// de jugador vinculado (staff de club, por ejemplo); `club: null`, que no
+// administra ninguno.
 export function getCurrentUser(token: string): Promise<CurrentUser> {
   return apiFetch<CurrentUser>("/auth/me", {
     headers: { Authorization: `Bearer ${token}` },
