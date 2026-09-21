@@ -26,9 +26,15 @@ export async function apiFetch<T>(path: string, init: RequestInit): Promise<T> {
     throw new Error("API_BASE_URL is not set");
   }
 
+  // Normalizar headers: remover duplicados y asegurar Content-Type
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...init.headers },
+    headers,
     signal: init.signal ?? AbortSignal.timeout(10_000),
   });
 

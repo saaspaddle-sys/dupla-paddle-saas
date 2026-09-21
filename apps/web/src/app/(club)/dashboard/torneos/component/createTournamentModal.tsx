@@ -6,11 +6,10 @@ import {
   TournamentFormat,
   TournamentStatus,
 } from "../utils/tournamentModel";
+import { createTournamentAction } from "../../../../../services/tournament/tournament-actions";
+import type { CreateTournamentPayload } from "@/services/tournament/create-tournament";
 
-type NewTournamentPayload = Pick<
-  Tournament,
-  "name" | "category" | "format" | "status" | "max_teams"
-> & { starts_at: string | null };
+type NewTournamentPayload = CreateTournamentPayload;
 
 interface Props {
   isOpen: boolean;
@@ -26,11 +25,11 @@ export default function CreateTournamentModal({
 }: Props) {
   // Estados para los campos que corresponden a la tabla `tournaments`
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("6ta");
-  const [format, setFormat] = useState<TournamentFormat>("single_elimination");
-  const [maxTeams, setMaxTeams] = useState<number>(32);
-  const [startsAt, setStartsAt] = useState("");
-  const [status, setStatus] = useState<TournamentStatus>("draft");
+  //  const [category, setCategory] = useState("6ta");
+  //  const [format, setFormat] = useState<TournamentFormat>("single_elimination");
+  //  const [maxTeams, setMaxTeams] = useState<number>(32);
+  //  const [startsAt, setStartsAt] = useState("");
+  //  const [status, setStatus] = useState<TournamentStatus>("draft");
 
   const [loading, setLoading] = useState(false);
 
@@ -40,19 +39,19 @@ export default function CreateTournamentModal({
     e.preventDefault();
     setLoading(true);
 
-    const tournamentPayload = {
+    const tournamentPayload: CreateTournamentPayload = {
       name,
-      category,
-      format,
-      max_teams: Number(maxTeams),
-      status,
-      starts_at: startsAt ? new Date(startsAt).toISOString() : null,
+      //category,
+      //format,
+      //max_teams: Number(maxTeams),
+      //status,
+      //starts_at: startsAt ? new Date(startsAt).toISOString() : null,
     };
 
     try {
       // Acá a futuro harás el fetch/post a tu backend de NestJS:
       // const res = await api.post('/tournaments', tournamentPayload);
-
+      await createTournamentAction(tournamentPayload);
       console.log("Creando torneo con data:", tournamentPayload);
 
       if (onSubmitSuccess) {
@@ -99,9 +98,11 @@ export default function CreateTournamentModal({
               className="w-full bg-[#1e2024] border border-gray-700 focus:border-padel-green text-sm text-white rounded-xl px-3.5 py-2.5 focus:outline-none transition-all placeholder:text-gray-600"
             />
           </div>
-
+          {/* 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Categoría */}
+            */}
+          {/* Categoría */}
+          {/* 
             <div>
               <label className="block text-xs font-semibold text-gray-400 mb-1">
                 Categoría
@@ -123,7 +124,9 @@ export default function CreateTournamentModal({
               </select>
             </div>
 
-            {/* Cantidad de Parejas (Cupo Máximo) */}
+*/}
+          {/* Cantidad de Parejas (Cupo Máximo) */}
+          {/*
             <div>
               <label className="block text-xs font-semibold text-gray-400 mb-1">
                 Cant. Parejas (Cupo)
@@ -144,7 +147,9 @@ export default function CreateTournamentModal({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Formato */}
+*/}
+          {/* Formato */}
+          {/*
             <div>
               <label className="block text-xs font-semibold text-gray-400 mb-1">
                 Formato
@@ -158,8 +163,9 @@ export default function CreateTournamentModal({
                 <option value="groups">Fase de Grupos + Llave</option>
               </select>
             </div>
-
-            {/* Fecha de inicio */}
+ */}
+          {/* Fecha de inicio */}
+          {/*
             <div>
               <label className="block text-xs font-semibold text-gray-400 mb-1">
                 Fecha de Inicio
@@ -173,7 +179,9 @@ export default function CreateTournamentModal({
             </div>
           </div>
 
+*/}
           {/* Estado inicial */}
+          {/*
           <div>
             <label className="block text-xs font-semibold text-gray-400 mb-1">
               Estado Inicial
@@ -190,6 +198,7 @@ export default function CreateTournamentModal({
             </select>
           </div>
 
+*/}
           {/* Botones de acción */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
             <button
