@@ -9,8 +9,10 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { MERCADO_PAGO_PREAPPROVAL_CLIENT } from '../src/subscriptions/mercado-pago-preapproval.client';
 import type { MercadoPagoPreapprovalClient } from '../src/subscriptions/mercado-pago-preapproval.client';
 import { ProviderUnavailableError } from '../src/subscriptions/mercado-pago-preapproval.client';
+import { MercadoPagoWebhookService } from '../src/subscriptions/mercado-pago-webhook.service';
 import { MERCADO_PAGO_WEBHOOK_VERIFIER } from '../src/subscriptions/mercado-pago-webhook-verifier';
 import type { MercadoPagoWebhookVerifier } from '../src/subscriptions/mercado-pago-webhook-verifier';
+import { MercadoPagoReconciliationRunner } from '../src/subscriptions/mercado-pago-reconciliation.runner';
 
 interface AuthBody {
   accessToken: string;
@@ -39,15 +41,62 @@ describe('Subscriptions checkout (e2e)', () => {
   const suffix = randomUUID().slice(0, 8);
   const ownerEmail = `billing-owner-${suffix}@dupla.test`;
   const noClubEmail = `billing-no-club-${suffix}@dupla.test`;
+  const pausePreapproval = jest.fn<Promise<void>, [string]>();
+  const resumePreapproval = jest.fn<Promise<void>, [string]>();
   const provider: jest.Mocked<MercadoPagoPreapprovalClient> = {
     create: jest.fn(),
     getAuthorizedPayment: jest.fn(),
+    getPreapproval: jest.fn(),
+    findAuthorizedPaymentsByPreapproval: jest.fn(),
+    pausePreapproval,
+    resumePreapproval,
     cancelPreapproval: jest.fn(),
     findPreapprovalByReference: jest.fn(),
   };
   const verifier: jest.Mocked<MercadoPagoWebhookVerifier> = {
     verify: jest.fn().mockReturnValue(true),
   };
+
+  function resetProviderMocks(): void {
+    provider.create.mockReset().mockResolvedValue({
+      id: `preapproval-${suffix}`,
+      status: 'pending',
+      initPoint: `https://checkout.test/${suffix}`,
+    });
+    provider.getAuthorizedPayment
+      .mockReset()
+      .mockRejectedValue(new ProviderUnavailableError());
+    (provider.getPreapproval as jest.Mock)
+      .mockReset()
+      .mockImplementation(async (id: string) => {
+        const checkout = await prisma?.subscriptionCheckout.findFirst({
+          where: { providerPreapprovalId: id },
+          select: { reference: true },
+        });
+        return {
+          id,
+          status: 'pending',
+          externalReference: checkout?.reference ?? 'unknown',
+          initPoint: `https://checkout.test/${suffix}`,
+        };
+      });
+    (provider.findAuthorizedPaymentsByPreapproval as jest.Mock)
+      .mockReset()
+      .mockResolvedValue([]);
+    (provider.pausePreapproval as jest.Mock)
+      .mockReset()
+      .mockResolvedValue(undefined);
+    (provider.resumePreapproval as jest.Mock)
+      .mockReset()
+      .mockResolvedValue(undefined);
+    (provider.cancelPreapproval as jest.Mock)
+      .mockReset()
+      .mockResolvedValue(undefined);
+    (provider.findPreapprovalByReference as jest.Mock)
+      .mockReset()
+      .mockResolvedValue(null);
+    verifier.verify.mockReset().mockReturnValue(true);
+  }
 
   beforeAll(async () => {
     // The reconciliation runner is intentionally enabled in production when
@@ -60,18 +109,7 @@ describe('Subscriptions checkout (e2e)', () => {
     process.env.MERCADO_PAGO_BACK_URL = 'https://app.test/billing-return';
     process.env.MERCADO_PAGO_WEBHOOK_URL =
       'https://api.test/webhooks/mercado-pago';
-    provider.create.mockResolvedValue({
-      id: `preapproval-${suffix}`,
-      status: 'pending',
-      initPoint: `https://checkout.test/${suffix}`,
-    });
-    // The worker can reconcile durable events created by other serial E2E
-    // cases. Its provider contract must remain defined outside each test.
-    provider.getAuthorizedPayment.mockRejectedValue(
-      new ProviderUnavailableError(),
-    );
-    (provider.cancelPreapproval as jest.Mock).mockResolvedValue(undefined);
-    (provider.findPreapprovalByReference as jest.Mock).mockResolvedValue(null);
+    resetProviderMocks();
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -81,6 +119,11 @@ describe('Subscriptions checkout (e2e)', () => {
       .useValue(provider)
       .overrideProvider(MERCADO_PAGO_WEBHOOK_VERIFIER)
       .useValue(verifier)
+      // Reconciliation is covered by its runner and service tests. Keeping it
+      // out of this HTTP lifecycle suite prevents unrelated durable rows from
+      // consuming this suite's provider mocks in the background.
+      .overrideProvider(MercadoPagoReconciliationRunner)
+      .useValue({})
       .compile();
     app = moduleFixture.createNestApplication();
     await app.init();
@@ -121,8 +164,21 @@ describe('Subscriptions checkout (e2e)', () => {
     ).id;
   });
 
+  beforeEach(() => resetProviderMocks());
+
   afterAll(async () => {
     await prisma.club.deleteMany({ where: { ownerId } });
+    await prisma.paymentEvent.deleteMany({
+      where: {
+        OR: [
+          { subscription: { userId: ownerId } },
+          { externalId: { endsWith: suffix } },
+        ],
+      },
+    });
+    await prisma.subscriptionCheckout.deleteMany({
+      where: { subscription: { userId: ownerId } },
+    });
     await prisma.subscriptionPreapprovalTombstone.deleteMany({
       where: { subscription: { userId: ownerId } },
     });
@@ -402,7 +458,7 @@ describe('Subscriptions checkout (e2e)', () => {
         where: { userId: ownerId },
         select: { plan: true, maxTournaments: true },
       }),
-    ).toEqual({ plan: 'free', maxTournaments: 1 });
+    ).toEqual({ plan: 'basic', maxTournaments: 3 });
     await prisma.subscriptionCheckout.updateMany({
       where: {
         subscriptionId: subscription.id,
@@ -439,7 +495,7 @@ describe('Subscriptions checkout (e2e)', () => {
         where: { userId: ownerId },
         select: { plan: true, maxTournaments: true },
       }),
-    ).toEqual({ plan: 'free', maxTournaments: 1 });
+    ).toEqual({ plan: 'basic', maxTournaments: 3 });
   });
 
   it('resumes an inserted event and serializes concurrent duplicate delivery', async () => {
@@ -571,6 +627,17 @@ describe('Subscriptions checkout (e2e)', () => {
       where: { userId: ownerId },
       select: { id: true },
     });
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        plan: 'free',
+        status: 'active',
+        maxTournaments: 1,
+        providerPreapprovalId: null,
+        providerStatus: null,
+        currentPeriodEndsAt: null,
+      },
+    });
     expect(
       (
         await request(app.getHttpServer())
@@ -610,13 +677,24 @@ describe('Subscriptions checkout (e2e)', () => {
     expect((retry.body as ErrorBody).code).toBe(
       'billing_checkout_recovery_required',
     );
-    expect(provider.create.mock.calls).toHaveLength(2);
+    expect(provider.create.mock.calls).toHaveLength(1);
   });
 
   it('treats a legacy zero-term reservation as expired so it cannot activate or block a fresh checkout', async () => {
     const subscription = await prisma.subscription.findUniqueOrThrow({
       where: { userId: ownerId },
       select: { id: true },
+    });
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        plan: 'free',
+        status: 'active',
+        maxTournaments: 1,
+        providerPreapprovalId: null,
+        providerStatus: null,
+        currentPeriodEndsAt: null,
+      },
     });
     await prisma.subscriptionCheckout.deleteMany({
       where: { subscriptionId: subscription.id },
@@ -672,5 +750,296 @@ describe('Subscriptions checkout (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ plan: 'basic' });
     expect(fresh.status).toBe(201);
+  });
+
+  it('expires a rejected initial checkout so a new checkout URL can be created', async () => {
+    const subscription = await prisma.subscription.findUniqueOrThrow({
+      where: { userId: ownerId },
+      select: { id: true },
+    });
+    const preapprovalId = `rejected-preapproval-${suffix}`;
+    const reference = `rejected-checkout-${suffix}`;
+    const paymentId = `rejected-payment-${suffix}`;
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        plan: 'free',
+        status: 'pending',
+        maxTournaments: 1,
+        providerPreapprovalId: null,
+        currentPeriodEndsAt: null,
+      },
+    });
+    await prisma.subscriptionCheckout.deleteMany({
+      where: { subscriptionId: subscription.id },
+    });
+    await prisma.subscriptionCheckout.create({
+      data: {
+        subscriptionId: subscription.id,
+        reference,
+        targetPlan: 'basic',
+        amount: 100,
+        currency: 'ARS',
+        state: 'pending',
+        providerPreapprovalId: preapprovalId,
+        initPoint: 'https://checkout.test/rejected',
+      },
+    });
+    provider.getAuthorizedPayment.mockResolvedValueOnce({
+      id: paymentId,
+      invoiceStatus: 'processed',
+      paymentStatus: 'rejected',
+      preapprovalId,
+      amount: '100.00',
+      currencyId: 'ARS',
+      externalReference: reference,
+      paidAt: new Date('2026-09-01T00:00:00.000Z'),
+    });
+
+    expect(
+      (
+        await request(app.getHttpServer())
+          .post('/webhooks/mercado-pago')
+          .query({ 'data.id': paymentId })
+          .set('x-signature', 'test')
+          .set('x-request-id', `rejected-event-${suffix}`)
+          .send({
+            id: `rejected-event-${suffix}`,
+            type: 'subscription_authorized_payment',
+            data: { id: paymentId },
+          })
+      ).status,
+    ).toBe(200);
+    expect(
+      await prisma.subscriptionCheckout.findFirstOrThrow({
+        where: { reference },
+        select: { state: true, providerStatus: true },
+      }),
+    ).toEqual({ state: 'expired', providerStatus: 'processed' });
+
+    provider.create.mockResolvedValueOnce({
+      id: `replacement-preapproval-${suffix}`,
+      status: 'pending',
+      initPoint: `https://checkout.test/replacement-${suffix}`,
+    });
+    const replacement = await request(app.getHttpServer())
+      .post('/subscriptions/me/checkouts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ plan: 'basic' });
+    expect(replacement.status).toBe(201);
+    expect(replacement.body as CheckoutBody).toMatchObject({
+      checkoutUrl: `https://checkout.test/replacement-${suffix}`,
+      reused: false,
+    });
+  });
+
+  it('replaces a canonically cancelled pending checkout without waiting for a webhook', async () => {
+    const subscription = await prisma.subscription.findUniqueOrThrow({
+      where: { userId: ownerId },
+      select: { id: true },
+    });
+    const preapprovalId = `cancelled-without-webhook-${suffix}`;
+    const reference = `cancelled-without-webhook-checkout-${suffix}`;
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        plan: 'free',
+        status: 'active',
+        maxTournaments: 1,
+        providerPreapprovalId: null,
+        providerStatus: null,
+        currentPeriodEndsAt: null,
+      },
+    });
+    await prisma.subscriptionCheckout.deleteMany({
+      where: { subscriptionId: subscription.id },
+    });
+    await prisma.subscriptionCheckout.create({
+      data: {
+        subscriptionId: subscription.id,
+        reference,
+        targetPlan: 'basic',
+        amount: 100,
+        currency: 'ARS',
+        state: 'pending',
+        providerPreapprovalId: preapprovalId,
+        providerStatus: 'pending',
+        initPoint: 'https://checkout.test/cancelled-stale',
+      },
+    });
+    (provider.getPreapproval as jest.Mock).mockResolvedValueOnce({
+      id: preapprovalId,
+      status: 'cancelled',
+      externalReference: reference,
+      initPoint: null,
+    });
+    provider.create.mockResolvedValueOnce({
+      id: `replacement-without-webhook-${suffix}`,
+      status: 'pending',
+      initPoint: `https://checkout.test/replacement-without-webhook-${suffix}`,
+    });
+
+    const replacement = await request(app.getHttpServer())
+      .post('/subscriptions/me/checkouts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ plan: 'basic' });
+
+    expect(replacement.status).toBe(201);
+    expect(replacement.body as CheckoutBody).toMatchObject({
+      checkoutUrl: `https://checkout.test/replacement-without-webhook-${suffix}`,
+      reused: false,
+    });
+    expect(provider.getAuthorizedPayment.mock.calls).toHaveLength(0);
+    expect(
+      await prisma.subscriptionCheckout.findFirstOrThrow({
+        where: { reference },
+        select: { state: true, providerStatus: true },
+      }),
+    ).toEqual({ state: 'expired', providerStatus: 'cancelled' });
+    expect(
+      await prisma.subscriptionCheckout.count({
+        where: { subscriptionId: subscription.id, state: 'pending' },
+      }),
+    ).toBe(1);
+  });
+
+  it('recovers an approved pending checkout without fabricating a webhook event', async () => {
+    const subscription = await prisma.subscription.findUniqueOrThrow({
+      where: { userId: ownerId },
+      select: { id: true },
+    });
+    const preapprovalId = `recovered-preapproval-${suffix}`;
+    const reference = `recovered-checkout-${suffix}`;
+    const paymentId = `recovered-invoice-${suffix}`;
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        plan: 'free',
+        status: 'pending',
+        maxTournaments: 1,
+        providerPreapprovalId: null,
+        currentPeriodEndsAt: null,
+      },
+    });
+    await prisma.subscriptionCheckout.deleteMany({
+      where: { subscriptionId: subscription.id },
+    });
+    await prisma.subscriptionCheckout.create({
+      data: {
+        subscriptionId: subscription.id,
+        reference,
+        targetPlan: 'basic',
+        amount: 100,
+        currency: 'ARS',
+        state: 'pending',
+        providerPreapprovalId: preapprovalId,
+      },
+    });
+    (provider.findAuthorizedPaymentsByPreapproval as jest.Mock)
+      .mockReset()
+      .mockResolvedValue([
+        {
+          id: paymentId,
+          invoiceStatus: 'processed',
+          paymentStatus: 'approved',
+          preapprovalId,
+          amount: '100.00',
+          currencyId: 'ARS',
+          externalReference: reference,
+          paidAt: new Date('2026-09-01T00:00:00.000Z'),
+        },
+      ]);
+
+    await expect(
+      app
+        .get(MercadoPagoWebhookService)
+        .reconcilePendingCheckoutsWithoutPaymentEvents(),
+    ).resolves.toBe(1);
+    expect(
+      await prisma.subscription.findUniqueOrThrow({
+        where: { id: subscription.id },
+        select: { plan: true, status: true, maxTournaments: true },
+      }),
+    ).toEqual({ plan: 'basic', status: 'active', maxTournaments: 3 });
+    expect(
+      await prisma.subscriptionCheckout.findFirstOrThrow({
+        where: { reference },
+        select: { state: true },
+      }),
+    ).toEqual({ state: 'completed' });
+    expect(
+      await prisma.paymentEvent.count({ where: { resourceId: paymentId } }),
+    ).toBe(0);
+  });
+
+  it('pauses and resumes the same paid mandate without a second checkout', async () => {
+    const subscription = await prisma.subscription.findUniqueOrThrow({
+      where: { userId: ownerId },
+      select: { id: true },
+    });
+    const preapprovalId = `resume-preapproval-${suffix}`;
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        plan: 'basic',
+        status: 'active',
+        maxTournaments: 3,
+        providerPreapprovalId: preapprovalId,
+        providerStatus: 'authorized',
+        pausedAt: null,
+        currentPeriodEndsAt: new Date('2099-10-01T00:00:00.000Z'),
+      },
+    });
+    provider.create.mockClear();
+
+    expect(
+      (
+        await request(app.getHttpServer())
+          .post('/subscriptions/me/cancel')
+          .set('Authorization', `Bearer ${token}`)
+      ).status,
+    ).toBe(200);
+    expect(pausePreapproval.mock.calls).toContainEqual([preapprovalId]);
+    const paused = await prisma.subscription.findUniqueOrThrow({
+      where: { id: subscription.id },
+      select: {
+        plan: true,
+        maxTournaments: true,
+        providerStatus: true,
+        pausedAt: true,
+      },
+    });
+    expect(paused).toMatchObject({
+      plan: 'basic',
+      maxTournaments: 3,
+      providerStatus: 'paused',
+    });
+    expect(paused.pausedAt).toBeInstanceOf(Date);
+
+    expect(
+      (
+        await request(app.getHttpServer())
+          .post('/subscriptions/me/resume')
+          .set('Authorization', `Bearer ${token}`)
+      ).status,
+    ).toBe(200);
+    expect(resumePreapproval.mock.calls).toContainEqual([preapprovalId]);
+    expect(provider.create.mock.calls).toHaveLength(0);
+    expect(
+      await prisma.subscription.findUniqueOrThrow({
+        where: { id: subscription.id },
+        select: {
+          plan: true,
+          maxTournaments: true,
+          providerStatus: true,
+          pausedAt: true,
+        },
+      }),
+    ).toEqual({
+      plan: 'basic',
+      maxTournaments: 3,
+      providerStatus: 'authorized',
+      pausedAt: null,
+    });
   });
 });

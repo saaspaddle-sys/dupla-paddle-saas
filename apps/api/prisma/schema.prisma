@@ -146,7 +146,16 @@ model Subscription {
   /// identity after its first payment.
   providerPreapprovalId String?   @unique @map("provider_preapproval_id")
   providerStatus        String?   @map("provider_status")
+  /// Durable provider-side boundary: invoices paid on or before this instant
+  /// still belong to the already-paid period, but must not resume renewal.
+  pausedAt              DateTime? @map("paused_at") @db.Timestamptz(3)
   currentPeriodEndsAt   DateTime? @map("current_period_ends_at") @db.Timestamptz(3)
+  /// A paid plan change is only granted after an approved renewal matches
+  /// this immutable quote. Until then the current plan remains effective.
+  pendingPlan           SubscriptionPlan? @map("pending_plan")
+  pendingPlanAmount     Decimal?          @map("pending_plan_amount") @db.Decimal(12, 2)
+  pendingPlanCurrency   String?           @map("pending_plan_currency") @db.VarChar(3)
+  pendingPlanConfirmedAt DateTime?        @map("pending_plan_confirmed_at") @db.Timestamptz(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

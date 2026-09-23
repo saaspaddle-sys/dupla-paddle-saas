@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import {
   AmbiguousPreapprovalCreationError,
   DefinitivePreapprovalRejectionError,
+  ProviderUnavailableError,
 } from './mercado-pago-preapproval.client';
 import { MercadoPagoHttpPreapprovalClient } from './mercado-pago-http-preapproval.client';
 
@@ -79,6 +80,59 @@ describe('MercadoPagoHttpPreapprovalClient outcome classification', () => {
     await expect(client.create(input)).rejects.toBeInstanceOf(
       DefinitivePreapprovalRejectionError,
     );
+  });
+
+  it('updates the recurring amount with its currency after a canonical read', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'preapproval-1',
+            status: 'authorized',
+            external_reference: 'reference-1',
+            init_point: null,
+            auto_recurring: {
+              transaction_amount: 100,
+              currency_id: 'ARS',
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'preapproval-1',
+            status: 'authorized',
+            external_reference: 'reference-1',
+            init_point: null,
+            auto_recurring: {
+              transaction_amount: 250,
+              currency_id: 'ARS',
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+    const client = new MercadoPagoHttpPreapprovalClient(config);
+
+    await expect(
+      client.updateRecurringAmount('preapproval-1', {
+        amount: 250,
+        currencyId: 'ARS',
+      }),
+    ).resolves.toBeUndefined();
+
+    const put = fetchMock.mock.calls[1];
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(put[1]).toMatchObject({
+      method: 'PUT',
+      body: JSON.stringify({
+        auto_recurring: { transaction_amount: 250, currency_id: 'ARS' },
+      }),
+    });
   });
 
   it('logs only bounded provider codes and never sensitive rejection values', async () => {
@@ -189,6 +243,84 @@ describe('MercadoPagoHttpPreapprovalClient outcome classification', () => {
       externalReference: 'opaque-reference',
       paidAt: new Date('2026-09-01T00:00:00.000Z'),
     });
+  });
+
+  it('normalizes an omitted cancelled-preapproval init point to null', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'preapproval-id',
+          status: 'cancelled',
+          external_reference: input.reference,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const client = new MercadoPagoHttpPreapprovalClient(config);
+
+    await expect(client.getPreapproval('preapproval-id')).resolves.toEqual({
+      id: 'preapproval-id',
+      status: 'cancelled',
+      externalReference: input.reference,
+      initPoint: null,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.mercadopago.com/preapproval/preapproval-id',
+      expect.any(Object),
+    );
+  });
+
+  it('treats malformed canonical preapproval responses as unavailable', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ id: 'preapproval-id', status: 'cancelled' }),
+        {
+          status: 200,
+        },
+      ),
+    );
+    const client = new MercadoPagoHttpPreapprovalClient(config);
+
+    await expect(
+      client.getPreapproval('preapproval-id'),
+    ).rejects.toBeInstanceOf(ProviderUnavailableError);
+  });
+
+  it('finds only a bounded normalized invoice set for a known preapproval', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              id: 123456,
+              status: 'processed',
+              preapproval_id: 'preapproval-id',
+              transaction_amount: '100.00',
+              currency_id: 'ARS',
+              external_reference: input.reference,
+              date_created: '2026-09-01T00:00:00.000Z',
+              payment: { status: 'approved' },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const client = new MercadoPagoHttpPreapprovalClient(config);
+
+    await expect(
+      client.findAuthorizedPaymentsByPreapproval('preapproval-id'),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: '123456',
+        preapprovalId: 'preapproval-id',
+        paymentStatus: 'approved',
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.mercadopago.com/authorized_payments/search?preapproval_id=preapproval-id&limit=10',
+      expect.any(Object),
+    );
   });
 
   it('sends exactly the documented pending-preapproval body', async () => {

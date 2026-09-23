@@ -1,4 +1,4 @@
-﻿import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
 import {
@@ -11,6 +11,8 @@ import type {
   CreatePreapprovalInput,
   CreatedPreapproval,
   MercadoPagoPreapprovalClient,
+  PreapprovalDetails,
+  UpdateRecurringAmountInput,
 } from './mercado-pago-preapproval.client';
 
 @Injectable()
@@ -114,6 +116,79 @@ export class MercadoPagoHttpPreapprovalClient implements MercadoPagoPreapprovalC
     };
   }
 
+  async getPreapproval(id: string): Promise<PreapprovalDetails> {
+    const accessToken = this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN');
+    if (!accessToken) throw new ProviderUnavailableError();
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://api.mercadopago.com/preapproval/${encodeURIComponent(id)}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+    } catch (error) {
+      this.logger.warn({
+        event: 'mercado_pago_preapproval_read_failed',
+        preapprovalId: id,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+      throw new ProviderUnavailableError();
+    }
+    if (!response.ok) {
+      this.logger.warn({
+        event: 'mercado_pago_preapproval_read_rejected',
+        preapprovalId: id,
+        status: response.status,
+      });
+      throw new ProviderUnavailableError();
+    }
+    const data: unknown = await response.json().catch(() => null);
+    if (!isPreapprovalDetails(data)) {
+      this.logger.warn({
+        event: 'mercado_pago_preapproval_read_invalid_payload',
+        preapprovalId: id,
+      });
+      throw new ProviderUnavailableError();
+    }
+    return {
+      id: data.id,
+      status: data.status,
+      externalReference: data.external_reference,
+      initPoint: data.init_point ?? null,
+      ...(data.auto_recurring
+        ? {
+            transactionAmount: data.auto_recurring.transaction_amount,
+            currencyId: data.auto_recurring.currency_id,
+          }
+        : {}),
+    };
+  }
+
+  async findAuthorizedPaymentsByPreapproval(
+    preapprovalId: string,
+  ): Promise<AuthorizedPayment[]> {
+    const accessToken = this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN');
+    if (!accessToken) throw new ProviderUnavailableError();
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://api.mercadopago.com/authorized_payments/search?preapproval_id=${encodeURIComponent(preapprovalId)}&limit=10`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+    } catch {
+      throw new ProviderUnavailableError();
+    }
+    if (!response.ok) throw new ProviderUnavailableError();
+    const data: unknown = await response.json().catch(() => null);
+    if (!isAuthorizedPaymentSearch(data)) throw new ProviderUnavailableError();
+    return data.results.map(toAuthorizedPayment);
+  }
+
   async findPreapprovalByReference(
     reference: string,
   ): Promise<CreatedPreapproval | null> {
@@ -146,7 +221,75 @@ export class MercadoPagoHttpPreapprovalClient implements MercadoPagoPreapprovalC
       : null;
   }
 
-  async cancelPreapproval(id: string): Promise<void> {
+  pausePreapproval(id: string): Promise<void> {
+    return this.updatePreapprovalStatus(id, 'paused');
+  }
+
+  resumePreapproval(id: string): Promise<void> {
+    return this.updatePreapprovalStatus(id, 'authorized');
+  }
+
+  cancelPreapproval(id: string): Promise<void> {
+    return this.updatePreapprovalStatus(id, 'cancelled');
+  }
+
+  async updateRecurringAmount(
+    id: string,
+    input: UpdateRecurringAmountInput,
+  ): Promise<void> {
+    const current = await this.getPreapproval(id);
+    if (
+      current.id !== id ||
+      current.status !== 'authorized' ||
+      current.currencyId !== input.currencyId
+    )
+      throw new ProviderUnavailableError();
+    if (sameAmount(current.transactionAmount, input.amount)) return;
+
+    const accessToken = this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN');
+    if (!accessToken) throw new ProviderUnavailableError();
+    try {
+      await fetch(
+        `https://api.mercadopago.com/preapproval/${encodeURIComponent(id)}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            auto_recurring: {
+              transaction_amount: input.amount,
+              currency_id: input.currencyId,
+            },
+          }),
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+    } catch {
+      await this.confirmRecurringAmount(id, input);
+      return;
+    }
+    await this.confirmRecurringAmount(id, input);
+  }
+
+  private async confirmRecurringAmount(
+    id: string,
+    input: UpdateRecurringAmountInput,
+  ): Promise<void> {
+    const canonical = await this.getPreapproval(id);
+    if (
+      canonical.id !== id ||
+      canonical.currencyId !== input.currencyId ||
+      !sameAmount(canonical.transactionAmount, input.amount)
+    )
+      throw new ProviderUnavailableError();
+  }
+
+  private async updatePreapprovalStatus(
+    id: string,
+    status: 'paused' | 'authorized' | 'cancelled',
+  ): Promise<void> {
     const accessToken = this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN');
     if (!accessToken) throw new ProviderUnavailableError();
     let response: Response;
@@ -159,7 +302,7 @@ export class MercadoPagoHttpPreapprovalClient implements MercadoPagoPreapprovalC
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ status: 'cancelled' }),
+          body: JSON.stringify({ status }),
           signal: AbortSignal.timeout(10_000),
         },
       );
@@ -371,6 +514,44 @@ function isPreapproval(
     typeof (value as Record<string, unknown>).init_point === 'string'
   );
 }
+
+function isPreapprovalDetails(value: unknown): value is {
+  id: string;
+  status: string;
+  external_reference: string;
+  init_point?: string | null;
+  auto_recurring?: {
+    transaction_amount: string | number;
+    currency_id: string;
+  };
+} {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  const autoRecurring = record.auto_recurring;
+  let validAutoRecurring = autoRecurring === undefined;
+  if (typeof autoRecurring === 'object' && autoRecurring !== null) {
+    const recurring = autoRecurring as Record<string, unknown>;
+    const amount = recurring.transaction_amount;
+    validAutoRecurring =
+      (typeof amount === 'string' ||
+        (typeof amount === 'number' && Number.isFinite(amount))) &&
+      typeof recurring.currency_id === 'string';
+  }
+  return (
+    typeof record.id === 'string' &&
+    typeof record.status === 'string' &&
+    typeof record.external_reference === 'string' &&
+    (typeof record.init_point === 'string' ||
+      record.init_point === null ||
+      record.init_point === undefined) &&
+    validAutoRecurring
+  );
+}
+
+function sameAmount(value: string | number | undefined, expected: number) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric.toFixed(2) === expected.toFixed(2);
+}
 function isAuthorizedPayment(value: unknown): value is {
   id: string | number;
   status: string;
@@ -398,6 +579,49 @@ function isAuthorizedPayment(value: unknown): value is {
     typeof record.date_created === 'string' &&
     !Number.isNaN(Date.parse(record.date_created))
   );
+}
+
+function isAuthorizedPaymentSearch(value: unknown): value is {
+  results: Array<{
+    id: string | number;
+    status: string;
+    preapproval_id: string;
+    transaction_amount: string | number;
+    currency_id: string;
+    external_reference: string;
+    payment: { status: string };
+    date_created: string;
+  }>;
+} {
+  if (typeof value !== 'object' || value === null) return false;
+  const results = (value as Record<string, unknown>).results;
+  return (
+    Array.isArray(results) &&
+    results.length <= 10 &&
+    results.every(isAuthorizedPayment)
+  );
+}
+
+function toAuthorizedPayment(data: {
+  id: string | number;
+  status: string;
+  preapproval_id: string;
+  transaction_amount: string | number;
+  currency_id: string;
+  external_reference: string;
+  payment: { status: string };
+  date_created: string;
+}): AuthorizedPayment {
+  return {
+    id: String(data.id),
+    invoiceStatus: data.status,
+    paymentStatus: data.payment.status,
+    preapprovalId: data.preapproval_id,
+    amount: String(data.transaction_amount),
+    currencyId: data.currency_id,
+    externalReference: data.external_reference,
+    paidAt: new Date(data.date_created),
+  };
 }
 
 function isPreapprovalSearch(value: unknown): value is {

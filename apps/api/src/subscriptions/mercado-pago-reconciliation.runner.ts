@@ -88,10 +88,22 @@ export class MercadoPagoReconciliationRunner
       try {
         const reconciled =
           await this.webhooks.reconcilePendingAuthorizedPayments();
+        const recovered =
+          await this.webhooks.reconcilePendingCheckoutsWithoutPaymentEvents();
+        const finalizedPaused =
+          await this.webhooks.finalizeExpiredPausedSubscriptions();
+        const reconciledExpiredActive =
+          await this.webhooks.reconcileExpiredActiveSubscriptions();
         const expired = await this.webhooks.expirePastDueEntitlements();
-        if (reconciled || expired)
+        if (
+          reconciled ||
+          recovered ||
+          finalizedPaused ||
+          reconciledExpiredActive ||
+          expired
+        )
           this.logger.log(
-            `Mercado Pago reconciliation: ${reconciled} events, ${expired} expirations`,
+            `Mercado Pago reconciliation: ${reconciled} events, ${recovered} recovered checkouts, ${finalizedPaused} paused finalizations, ${reconciledExpiredActive} active renewals/expirations, ${expired} expirations`,
           );
       } finally {
         clearInterval(heartbeat);

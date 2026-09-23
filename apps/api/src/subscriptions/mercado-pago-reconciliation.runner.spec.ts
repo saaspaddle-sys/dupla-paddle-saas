@@ -35,6 +35,11 @@ describe('MercadoPagoReconciliationRunner lease', () => {
       prisma,
       {
         reconcilePendingAuthorizedPayments,
+        reconcilePendingCheckoutsWithoutPaymentEvents: jest
+          .fn()
+          .mockResolvedValue(0),
+        finalizeExpiredPausedSubscriptions: jest.fn().mockResolvedValue(0),
+        reconcileExpiredActiveSubscriptions: jest.fn().mockResolvedValue(0),
         expirePastDueEntitlements: jest.fn().mockResolvedValue(0),
       } as unknown as MercadoPagoWebhookService,
     );
@@ -100,6 +105,11 @@ describe('MercadoPagoReconciliationRunner lease', () => {
       prisma,
       {
         reconcilePendingAuthorizedPayments,
+        reconcilePendingCheckoutsWithoutPaymentEvents: jest
+          .fn()
+          .mockResolvedValue(0),
+        finalizeExpiredPausedSubscriptions: jest.fn().mockResolvedValue(0),
+        reconcileExpiredActiveSubscriptions: jest.fn().mockResolvedValue(0),
         expirePastDueEntitlements: jest.fn().mockResolvedValue(0),
       } as unknown as MercadoPagoWebhookService,
     );
@@ -114,6 +124,9 @@ describe('MercadoPagoReconciliationRunner lease', () => {
     expect(shutdownFinished).toBe(false);
 
     finishReconciliation?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
     expect(updateMany).toHaveBeenCalledTimes(1);

@@ -1,4 +1,4 @@
-﻿export const MERCADO_PAGO_PREAPPROVAL_CLIENT = Symbol(
+export const MERCADO_PAGO_PREAPPROVAL_CLIENT = Symbol(
   'MERCADO_PAGO_PREAPPROVAL_CLIENT',
 );
 
@@ -18,7 +18,7 @@ export class AmbiguousPreapprovalCreationError extends Error {
   }
 }
 
-/** La lectura canÃ³nica no pudo verificarse y el proveedor debe reintentar. */
+/** La lectura canónica no pudo verificarse y el proveedor debe reintentar. */
 export class ProviderUnavailableError extends Error {}
 
 export interface CreatePreapprovalInput {
@@ -51,10 +51,41 @@ export interface CreatedPreapproval {
   initPoint: string;
 }
 
+/** Canonical state returned by GET /preapproval/{id}. */
+export interface PreapprovalDetails {
+  id: string;
+  status: string;
+  externalReference: string;
+  // Mercado Pago returns null after a preapproval is cancelled.
+  initPoint: string | null;
+  transactionAmount?: string | number;
+  currencyId?: string;
+}
+
+export interface UpdateRecurringAmountInput {
+  amount: number;
+  currencyId: string;
+}
+
 export interface MercadoPagoPreapprovalClient {
   create(input: CreatePreapprovalInput): Promise<CreatedPreapproval>;
   getAuthorizedPayment(id: string): Promise<AuthorizedPayment>;
+  /** Reads one mandate by provider id; transport or payload failures reject. */
+  getPreapproval(id: string): Promise<PreapprovalDetails>;
+  /**
+   * Returns a provider-bounded set of invoices for one known mandate. Callers
+   * must still correlate every candidate to their durable checkout.
+   */
+  findAuthorizedPaymentsByPreapproval?(
+    preapprovalId: string,
+  ): Promise<AuthorizedPayment[]>;
+  pausePreapproval?(id: string): Promise<void>;
+  resumePreapproval?(id: string): Promise<void>;
   cancelPreapproval?(id: string): Promise<void>;
+  updateRecurringAmount?(
+    id: string,
+    input: UpdateRecurringAmountInput,
+  ): Promise<void>;
   findPreapprovalByReference?(
     reference: string,
   ): Promise<CreatedPreapproval | null>;

@@ -93,7 +93,7 @@ El mismo resumen sigue embebido en `GET /clubs/me`. Esto mantiene compatible al 
 El flujo en `SubscriptionsService.createCheckout` es:
 
 1. Carga la suscripción y el email del dueño.
-2. Rechaza un nuevo checkout si la suscripción todavía tiene un mandato activo; primero debe cancelarse.
+2. Rechaza un nuevo checkout mientras exista un mandato vigente para evitar dos cargos recurrentes. Para pasar de Basic activo a Pro se usa `POST /subscriptions/me/upgrade`; cancelar la renovación no habilita otro checkout hasta que termine el período pagado.
 3. Resuelve precio, moneda y `back_url` desde configuración.
 4. Busca un checkout `pending` o `recovery_required`:
    - mismo plan con URL persistida: reutiliza la URL;
@@ -147,31 +147,31 @@ Para un pago autorizado, el backend consulta `GET /authorized_payments/{id}` y a
 
 La actualización del plan se ejecuta con `runSerializable`: mueve juntos `plan`, `status`, `maxTournaments`, `providerPreapprovalId`, `providerStatus` y `currentPeriodEndsAt`; completa el checkout y marca el evento procesado. Si el proveedor no está disponible o todavía falta correlación durable, el evento queda sin `processedAt` y con `lastErrorAt` para reintento.
 
-## 7. Renovación, vencimiento y cancelación
+## 7. Renovación, vencimiento, pausa y reanudación
 
 ### Renovaciones
 
-Los siguientes cobros llegan por el mismo webhook. Ya no dependen del checkout histórico: la identidad estable es `subscriptions.provider_preapproval_id`.
+Los cobros de renovación usan la identidad estable `subscriptions.provider_preapproval_id`; no dependen del checkout histórico.
 
-### Vencimiento
+### Reconciliación y vencimiento
 
-`MercadoPagoReconciliationRunner` se ejecuta al arrancar y luego por intervalo. Usa `billing_job_locks` como lease distribuido para que varias instancias de la API no procesen el mismo lote a la vez. En cada corrida:
+`MercadoPagoReconciliationRunner` se ejecuta al arrancar y por intervalo bajo el lease distribuido `billing_job_locks`. En cada corrida:
 
-1. reintenta hasta 100 eventos autorizados pendientes;
-2. degrada a `free/canceled` las suscripciones `active` o `past_due` cuyo `currentPeriodEndsAt` venció;
-3. renueva el lease mientras el procesamiento continúa.
+1. reintenta eventos autorizados pendientes;
+2. recupera checkouts `pending` sin webhook mediante facturas autorizadas canónicas;
+3. antes de degradar un mandato `active` vencido, consulta sus facturas autorizadas: una factura aprobada que extiende el período se acredita; si el proveedor no está disponible, conserva acceso para reintentar;
+4. finaliza mandatos `paused` vencidos en Mercado Pago y sólo después crea su tombstone y baja a `free/canceled`;
+5. renueva el lease mientras procesa.
 
 No hay período de gracia adicional al período ya pagado.
 
-### Cancelación
+### Pausa y reanudación
 
-`POST /subscriptions/me/cancel` cancela la Preapproval en Mercado Pago. Luego, en una transacción:
+`POST /subscriptions/me/cancel` pausa la Preapproval, conserva el plan, cuota, mandato y período ya pagado, y registra `pausedAt`. Repetirlo es idempotente.
 
-1. guarda un `subscription_preapproval_tombstone`;
-2. vuelve la suscripción a `free/canceled` y cuota `1`;
-3. elimina la identidad activa del mandato y el fin del período.
+`POST /subscriptions/me/resume` reanuda esa misma Preapproval antes del vencimiento. No crea checkout ni una segunda autorización/factura. Al vencer sin reanudar, el runner cancela definitivamente el mandato, crea el tombstone y baja la cuenta a Free.
 
-La tombstone permite reconocer facturas tardías del mandato viejo sin otorgar derechos a una suscripción nueva.
+Una factura aprobada retrasada con `paidAt <= pausedAt` acredita su período, pero mantiene `providerStatus: paused`; una posterior se conserva auditada sin extender acceso ni reactivar renovación.
 
 ## 8. Cómo se conecta con el resto del sistema
 
@@ -279,20 +279,11 @@ Antes de desplegar, `pnpm run db:verify` debe confirmar que las migraciones y `s
 | `checkout_in_progress`                  | Otro request está creando el checkout.                                                                                     |
 | `billing_checkout_recovery_required`    | El resultado puede existir en Mercado Pago, pero todavía no está correlacionado localmente. No se debe crear otro mandato. |
 | `billing_provider_rejected`             | Mercado Pago rechazó definitivamente la creación.                                                                          |
-| `active_subscription_must_be_cancelled` | Hay un mandato activo; debe cancelarse antes de reemplazarlo.                                                              |
+| `subscription_upgrade_required`         | Ya hay un plan Basic activo: usar `POST /subscriptions/me/upgrade` con `targetPlan: "pro"`, no crear otro checkout.                 |
+| `active_subscription_must_be_cancelled` | Ya hay un mandato activo. Cancelar la renovación no habilita otro checkout hasta que termine el período pagado.                 |
 | `billing_provider_unavailable`          | La lectura/cancelación canónica no está disponible; corresponde reintentar.                                                |
 
 Los errores exclusivos del webhook (`invalid_webhook_signature`, `webhook_event_identity_conflict`) son operativos y no deberían aparecer en una pantalla de usuario.
-
-## Estado actual y pendientes de sincronización
-
-La integración backend existe en el worktree actual, pero todavía hay límites que deben quedar visibles antes de presentarla como cerrada:
-
-- `apps/web` todavía no consume el checkout ni la cancelación; sigue leyendo la suscripción embebida desde el club.
-- `apps/api/openapi.json` incluye consulta y checkout, pero todavía no refleja `POST /subscriptions/me/cancel` ni el estado `past_due`. Debe regenerarse junto con el código que se entregue.
-- `POST /subscriptions/me/cancel` declara una respuesta Swagger `200`, pero sin `@HttpCode(200)` Nest responde `201`. El contrato y la implementación deben alinearse.
-- La cuota aplicada es `free=1`, `basic=3`, `pro=12`. `TournamentsService` controla `maxTournaments`, no `subscription.status`; la degradación afecta nuevas llaves, no borra torneos existentes.
-- Hay documentación histórica que todavía afirma que Mercado Pago no está implementado. Para saber qué corre hoy, prevalecen el código, las migraciones aplicadas y el OpenAPI regenerado; esa documentación debe actualizarse al entregar la integración.
 
 ## Checklist de verificación
 

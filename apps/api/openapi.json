@@ -1044,6 +1044,97 @@
         ]
       }
     },
+    "/subscriptions/me/upgrade-quote": {
+      "get": {
+        "operationId": "Subscriptions_quoteUpgrade",
+        "parameters": [
+          {
+            "name": "targetPlan",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pro"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanUpgradeQuoteResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed (`validation`)."
+          },
+          "409": {
+            "description": "The subscription is not an active auto-renewing Basic subscription."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Quotes a Basic-to-Pro upgrade for the next renewal",
+        "tags": [
+          "Clubs"
+        ]
+      }
+    },
+    "/subscriptions/me/upgrade": {
+      "post": {
+        "operationId": "Subscriptions_scheduleUpgrade",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanUpgradeRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanUpgradeQuoteResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request validation failed (`validation`)."
+          },
+          "409": {
+            "description": "The subscription is not an active auto-renewing Basic subscription."
+          },
+          "503": {
+            "description": "Mercado Pago could not confirm the recurring amount update (`billing_provider_unavailable`)."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Schedules Basic-to-Pro for the next approved Pro renewal",
+        "tags": [
+          "Clubs"
+        ]
+      }
+    },
     "/subscriptions/me/checkouts": {
       "post": {
         "operationId": "Subscriptions_createCheckout",
@@ -1079,7 +1170,7 @@
             "description": "The account does not administer a club (`club_required`)."
           },
           "409": {
-            "description": "A checkout is pending for another plan (`checkout_pending_for_another_plan`) or is being created (`checkout_in_progress`)."
+            "description": "An active Basic subscription must use `/subscriptions/me/upgrade` (`subscription_upgrade_required`); another active subscription cannot start a second checkout until its paid period ends. A checkout may also be pending or in progress."
           },
           "503": {
             "description": "Billing configuration or checkout recovery is unavailable (`billing_not_configured`, `billing_checkout_recovery_required`)."
@@ -1096,13 +1187,19 @@
         ]
       }
     },
-    "/subscriptions/me/cancel": {
+    "/subscriptions/me/resume": {
       "post": {
-        "operationId": "Subscriptions_cancelMine",
+        "operationId": "Subscriptions_resumeMine",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Subscription was cancelled."
+            "description": "Subscription renewal was resumed."
+          },
+          "409": {
+            "description": "The paused subscription period has ended (`paused_subscription_period_ended`)."
+          },
+          "503": {
+            "description": "Mercado Pago is unavailable (`billing_provider_unavailable`)."
           }
         },
         "security": [
@@ -1110,7 +1207,27 @@
             "jwt": []
           }
         ],
-        "summary": "Cancels the active Mercado Pago recurring subscription",
+        "summary": "Resumes a paused Mercado Pago recurring subscription",
+        "tags": [
+          "Clubs"
+        ]
+      }
+    },
+    "/subscriptions/me/cancel": {
+      "post": {
+        "operationId": "Subscriptions_cancelMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Subscription renewal was paused."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Stops renewal while preserving the paid subscription period",
         "tags": [
           "Clubs"
         ]
@@ -2156,6 +2273,36 @@
           "sets"
         ]
       },
+      "PlanUpgradeQuoteResponseDto": {
+        "type": "object",
+        "properties": {
+          "targetPlan": {
+            "type": "string",
+            "enum": [
+              "pro"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "example": "25000.00"
+          },
+          "currency": {
+            "type": "string",
+            "example": "ARS"
+          },
+          "effectiveAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-21T00:00:00.000Z"
+          }
+        },
+        "required": [
+          "targetPlan",
+          "amount",
+          "currency",
+          "effectiveAt"
+        ]
+      },
       "SubscriptionResponseDto": {
         "type": "object",
         "properties": {
@@ -2179,12 +2326,48 @@
           "maxTournaments": {
             "type": "number",
             "example": 1
+          },
+          "currentPeriodEndsAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "example": "2026-10-21T00:00:00.000Z"
+          },
+          "renewsAutomatically": {
+            "type": "boolean",
+            "example": true
+          },
+          "pendingUpgrade": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanUpgradeQuoteResponseDto"
+              }
+            ]
           }
         },
         "required": [
           "plan",
           "status",
-          "maxTournaments"
+          "maxTournaments",
+          "currentPeriodEndsAt",
+          "renewsAutomatically",
+          "pendingUpgrade"
+        ]
+      },
+      "PlanUpgradeRequestDto": {
+        "type": "object",
+        "properties": {
+          "targetPlan": {
+            "type": "string",
+            "enum": [
+              "pro"
+            ]
+          }
+        },
+        "required": [
+          "targetPlan"
         ]
       },
       "CreateCheckoutDto": {

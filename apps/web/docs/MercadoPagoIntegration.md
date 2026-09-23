@@ -88,11 +88,13 @@ type Checkout = {
 
 `reused: true` significa que el backend reutilizó un checkout pendiente. No significa que el pago fue aprobado.
 
+Un usuario con Basic activo no debe usar este endpoint para pasar a Pro. La UI debe consultar `GET /subscriptions/me/upgrade-quote?targetPlan=pro` y programar el cambio con `POST /subscriptions/me/upgrade` y `{ "targetPlan": "pro" }`. Pro se activa después de la próxima renovación aprobada por el importe Pro; no se crea otra suscripción.
+
 ### Cancelar la suscripción
 
 `POST /subscriptions/me/cancel`
 
-La operación exitosa devuelve `200`. Después de cancelarla, la UI debe volver a consultar `GET /subscriptions/me` en lugar de fabricar un estado local.
+La operación exitosa devuelve `200` y pausa la renovación; no termina el período pagado ni permite inmediatamente otro checkout. Después, la UI debe volver a consultar `GET /subscriptions/me` en lugar de fabricar un estado local.
 
 Todos los endpoints requieren el JWT del usuario autenticado y un club administrado por esa cuenta.
 
@@ -245,7 +247,8 @@ No derivar permisos desde el nombre del plan. Para anticipar límites puede most
 | `club_required` | Llevar al flujo de creación/configuración del club. |
 | `checkout_pending_for_another_plan` | Informar que ya existe un checkout pendiente para otro plan. |
 | `checkout_in_progress` | Mantener el formulario bloqueado brevemente y permitir reintentar. |
-| `active_subscription_must_be_cancelled` | Solicitar cancelar primero la suscripción vigente. |
+| `subscription_upgrade_required` | Dirigir al cambio de Basic a Pro en `/dashboard/suscripcion`; no iniciar otro checkout. |
+| `active_subscription_must_be_cancelled` | Explicar que cancelar la renovación conserva el período pagado y que otro checkout estará disponible cuando termine. |
 | `billing_checkout_recovery_required` | Informar que se está verificando una operación anterior; no crear intentos repetidos. |
 | `billing_provider_rejected` | Indicar que Mercado Pago rechazó la operación y permitir reintentar más tarde. |
 | `billing_provider_unavailable` | Mostrar indisponibilidad temporal y conservar el estado actual. |
