@@ -8,6 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MercadoPagoWebhookService } from './mercado-pago-webhook.service';
+import { Optional } from '@nestjs/common';
+import { SubscriptionUpgradeService } from './subscription-upgrade.service';
 
 const JOB_NAME = 'mercado_pago_subscription_reconciliation';
 const LEASE_SECONDS = 55;
@@ -31,6 +33,7 @@ export class MercadoPagoReconciliationRunner
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly webhooks: MercadoPagoWebhookService,
+    @Optional() private readonly upgrades?: SubscriptionUpgradeService,
   ) {}
 
   onModuleInit(): void {
@@ -88,22 +91,33 @@ export class MercadoPagoReconciliationRunner
       try {
         const reconciled =
           await this.webhooks.reconcilePendingAuthorizedPayments();
+        const upgradeEvents = this.upgrades
+          ? await this.webhooks.reconcilePendingUpgradePayments()
+          : 0;
+        const upgradeRecovery = this.upgrades
+          ? await this.upgrades.reconcile()
+          : 0;
         const recovered =
           await this.webhooks.reconcilePendingCheckoutsWithoutPaymentEvents();
         const finalizedPaused =
           await this.webhooks.finalizeExpiredPausedSubscriptions();
         const reconciledExpiredActive =
           await this.webhooks.reconcileExpiredActiveSubscriptions();
+        const activatedDowngrades =
+          await this.webhooks.activatePaidDowngrades();
         const expired = await this.webhooks.expirePastDueEntitlements();
         if (
           reconciled ||
+          upgradeEvents ||
+          upgradeRecovery ||
           recovered ||
           finalizedPaused ||
           reconciledExpiredActive ||
+          activatedDowngrades ||
           expired
         )
           this.logger.log(
-            `Mercado Pago reconciliation: ${reconciled} events, ${recovered} recovered checkouts, ${finalizedPaused} paused finalizations, ${reconciledExpiredActive} active renewals/expirations, ${expired} expirations`,
+            `Mercado Pago reconciliation: ${reconciled} recurring events, ${upgradeEvents} upgrade events, ${upgradeRecovery} upgrade recoveries, ${recovered} recovered checkouts, ${finalizedPaused} paused finalizations, ${reconciledExpiredActive} active renewals/expirations, ${activatedDowngrades} paid downgrades, ${expired} expirations`,
           );
       } finally {
         clearInterval(heartbeat);

@@ -20,6 +20,8 @@ type SubscriptionRecord = {
   pendingPlan?: string | null;
   pendingPlanAmount?: { equals(value: { toString(): string }): boolean } | null;
   pendingPlanCurrency?: string | null;
+  pendingPlanEffectiveAt?: Date | null;
+  pendingPlanPaidAt?: Date | null;
 };
 
 type FindSubscription = () => Promise<SubscriptionRecord | null>;
@@ -137,7 +139,7 @@ describe('MercadoPagoWebhookService', () => {
     expect(h.updateEvent).toHaveBeenCalled();
   });
 
-  it('applies a scheduled Pro upgrade only after a matching approved renewal', async () => {
+  it('applies a scheduled Basic downgrade only after a matching approved renewal', async () => {
     const h = harness({
       subscription: {
         findFirst: jest.fn().mockResolvedValue({ id: 'subscription-1' }),
@@ -147,20 +149,21 @@ describe('MercadoPagoWebhookService', () => {
     h.findSubscription.mockResolvedValue({
       id: 'subscription-1',
       providerPreapprovalId: 'preapproval-1',
-      plan: 'basic',
+      plan: 'pro',
       currentPeriodEndsAt: new Date('2026-10-01T00:00:00.000Z'),
-      pendingPlan: 'pro',
+      pendingPlan: 'basic',
       pendingPlanAmount: {
-        equals: (value) => value.toString() === '250',
+        equals: (value) => value.toString() === '100',
       },
       pendingPlanCurrency: 'ARS',
+      pendingPlanEffectiveAt: new Date('2026-10-01T00:00:00.000Z'),
     });
     (h.provider.getAuthorizedPayment as jest.Mock).mockResolvedValueOnce({
       id: 'payment-1',
       invoiceStatus: 'processed',
       paymentStatus: 'approved',
       preapprovalId: 'preapproval-1',
-      amount: '250.00',
+      amount: '100.00',
       currencyId: 'ARS',
       externalReference: 'subscription-reference',
       paidAt: new Date('2026-10-01T00:00:00.000Z'),
@@ -173,16 +176,18 @@ describe('MercadoPagoWebhookService', () => {
     );
 
     expect(h.subscriptionUpdate()?.data).toMatchObject({
-      plan: 'pro',
-      maxTournaments: 12,
+      plan: 'basic',
+      maxTournaments: 3,
       pendingPlan: null,
       pendingPlanAmount: null,
       pendingPlanCurrency: null,
       pendingPlanConfirmedAt: null,
+      pendingPlanEffectiveAt: null,
+      pendingPlanPaidAt: null,
     });
   });
 
-  it('keeps Basic and the pending upgrade when an old-priced renewal arrives', async () => {
+  it('preserves paid Pro access when a matching Basic renewal is charged early', async () => {
     const h = harness({
       subscription: {
         findFirst: jest.fn().mockResolvedValue({ id: 'subscription-1' }),
@@ -192,11 +197,97 @@ describe('MercadoPagoWebhookService', () => {
     h.findSubscription.mockResolvedValue({
       id: 'subscription-1',
       providerPreapprovalId: 'preapproval-1',
-      plan: 'basic',
+      plan: 'pro',
       currentPeriodEndsAt: new Date('2026-10-01T00:00:00.000Z'),
-      pendingPlan: 'pro',
+      pendingPlan: 'basic',
       pendingPlanAmount: {
-        equals: (value) => value.toString() === '250',
+        equals: (value: { toString(): string }) => value.toString() === '100',
+      },
+      pendingPlanCurrency: 'ARS',
+      pendingPlanEffectiveAt: new Date('2026-10-01T00:00:00.000Z'),
+    });
+    (h.provider.getAuthorizedPayment as jest.Mock).mockResolvedValueOnce({
+      id: 'payment-1',
+      invoiceStatus: 'processed',
+      paymentStatus: 'approved',
+      preapprovalId: 'preapproval-1',
+      amount: '100.00',
+      currencyId: 'ARS',
+      externalReference: 'subscription-reference',
+      paidAt: new Date('2026-09-30T00:00:00.000Z'),
+    });
+
+    await new MercadoPagoWebhookService(h.prisma, h.provider, verifier).receive(
+      payload,
+      'signature',
+      'request',
+    );
+
+    expect(h.subscriptionUpdate()?.data).toMatchObject({
+      plan: 'pro',
+      maxTournaments: 12,
+      pendingPlanPaidAt: new Date('2026-09-30T00:00:00.000Z'),
+    });
+  });
+
+  it('activates an early-paid downgrade at the original Pro period boundary', async () => {
+    const now = new Date('2026-10-01T00:00:00.000Z');
+    const update = jest.fn();
+    const tx = {
+      $executeRaw: jest.fn(),
+      subscription: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'subscription-1',
+          plan: 'pro',
+          status: 'active',
+          pendingPlan: 'basic',
+          pendingPlanPaidAt: new Date('2026-09-30T00:00:00.000Z'),
+          pendingPlanEffectiveAt: now,
+          currentPeriodEndsAt: new Date('2026-11-01T00:00:00.000Z'),
+        }),
+        update,
+      },
+    };
+    const prisma = {
+      subscription: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'subscription-1' }]),
+      },
+      $transaction: jest.fn((handler: (client: never) => Promise<unknown>) =>
+        handler(tx as never),
+      ),
+    } as unknown as PrismaService;
+    const service = new MercadoPagoWebhookService(
+      prisma,
+      {} as MercadoPagoPreapprovalClient,
+      verifier,
+    );
+
+    await expect(service.activatePaidDowngrades(now)).resolves.toBe(1);
+    const [input] = update.mock.calls[0] as [{ data: Record<string, unknown> }];
+    expect(input.data).toMatchObject({
+      plan: 'basic',
+      maxTournaments: 3,
+      pendingPlan: null,
+      pendingPlanPaidAt: null,
+      pendingPlanEffectiveAt: null,
+    });
+  });
+
+  it('keeps Pro and the pending downgrade when an old-priced renewal arrives', async () => {
+    const h = harness({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'subscription-1' }),
+      },
+    });
+    h.tx.subscriptionCheckout.findFirst.mockResolvedValue(null);
+    h.findSubscription.mockResolvedValue({
+      id: 'subscription-1',
+      providerPreapprovalId: 'preapproval-1',
+      plan: 'pro',
+      currentPeriodEndsAt: new Date('2026-10-01T00:00:00.000Z'),
+      pendingPlan: 'basic',
+      pendingPlanAmount: {
+        equals: (value) => value.toString() === '100',
       },
       pendingPlanCurrency: 'ARS',
     });
@@ -208,8 +299,8 @@ describe('MercadoPagoWebhookService', () => {
     );
 
     expect(h.subscriptionUpdate()?.data).toMatchObject({
-      plan: 'basic',
-      maxTournaments: 3,
+      plan: 'pro',
+      maxTournaments: 12,
     });
     expect(h.subscriptionUpdate()?.data).not.toHaveProperty('pendingPlan');
   });

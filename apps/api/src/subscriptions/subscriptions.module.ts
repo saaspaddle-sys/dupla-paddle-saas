@@ -12,12 +12,14 @@ import { MERCADO_PAGO_PREAPPROVAL_CLIENT } from './mercado-pago-preapproval.clie
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
 import { MercadoPagoReconciliationRunner } from './mercado-pago-reconciliation.runner';
+import { SubscriptionUpgradeService } from './subscription-upgrade.service';
 
 @Module({
   imports: [PrismaModule, AuthModule],
   controllers: [SubscriptionsController, MercadoPagoWebhookController],
   providers: [
     SubscriptionsService,
+    SubscriptionUpgradeService,
     MercadoPagoHttpPreapprovalClient,
     MercadoPagoHmacWebhookVerifier,
     MercadoPagoWebhookService,

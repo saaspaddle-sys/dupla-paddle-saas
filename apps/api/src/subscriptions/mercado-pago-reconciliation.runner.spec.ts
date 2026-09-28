@@ -40,6 +40,7 @@ describe('MercadoPagoReconciliationRunner lease', () => {
           .mockResolvedValue(0),
         finalizeExpiredPausedSubscriptions: jest.fn().mockResolvedValue(0),
         reconcileExpiredActiveSubscriptions: jest.fn().mockResolvedValue(0),
+        activatePaidDowngrades: jest.fn().mockResolvedValue(0),
         expirePastDueEntitlements: jest.fn().mockResolvedValue(0),
       } as unknown as MercadoPagoWebhookService,
     );
@@ -80,16 +81,26 @@ describe('MercadoPagoReconciliationRunner lease', () => {
 
   it('waits for active reconciliation and lease release during application shutdown', async () => {
     let finishReconciliation: (() => void) | undefined;
+    let notifyReconciliationStarted: (() => void) | undefined;
+    const reconciliationStarted = new Promise<void>((resolve) => {
+      notifyReconciliationStarted = resolve;
+    });
     const reconcilePendingAuthorizedPayments = jest.fn(
       () =>
         new Promise<void>((resolve) => {
           finishReconciliation = resolve;
+          notifyReconciliationStarted?.();
         }),
     );
     let finishRelease: (() => void) | undefined;
+    let notifyReleaseStarted: (() => void) | undefined;
+    const releaseStarted = new Promise<void>((resolve) => {
+      notifyReleaseStarted = resolve;
+    });
     const updateMany = jest.fn(() => {
       return new Promise<{ count: number }>((resolve) => {
         finishRelease = () => resolve({ count: 1 });
+        notifyReleaseStarted?.();
       });
     });
     const prisma = {
@@ -110,11 +121,12 @@ describe('MercadoPagoReconciliationRunner lease', () => {
           .mockResolvedValue(0),
         finalizeExpiredPausedSubscriptions: jest.fn().mockResolvedValue(0),
         reconcileExpiredActiveSubscriptions: jest.fn().mockResolvedValue(0),
+        activatePaidDowngrades: jest.fn().mockResolvedValue(0),
         expirePastDueEntitlements: jest.fn().mockResolvedValue(0),
       } as unknown as MercadoPagoWebhookService,
     );
     runner.onModuleInit();
-    await Promise.resolve();
+    await reconciliationStarted;
 
     let shutdownFinished = false;
     const shutdown = runner.onApplicationShutdown().then(() => {
@@ -124,11 +136,7 @@ describe('MercadoPagoReconciliationRunner lease', () => {
     expect(shutdownFinished).toBe(false);
 
     finishReconciliation?.();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await releaseStarted;
     expect(updateMany).toHaveBeenCalledTimes(1);
     expect(shutdownFinished).toBe(false);
 

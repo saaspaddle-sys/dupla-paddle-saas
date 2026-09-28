@@ -21,6 +21,23 @@ export class AmbiguousPreapprovalCreationError extends Error {
 /** La lectura canónica no pudo verificarse y el proveedor debe reintentar. */
 export class ProviderUnavailableError extends Error {}
 
+export class AmbiguousUpgradePreferenceError extends Error {}
+
+export interface UpgradePreference {
+  id: string;
+  reference: string;
+  checkoutUrl: string;
+}
+
+export interface UpgradePayment {
+  id: string;
+  status: string;
+  reference: string;
+  amount: string;
+  currencyId: string;
+  approvedAt: Date | null;
+}
+
 export interface CreatePreapprovalInput {
   reference: string;
   payerEmail: string;
@@ -68,6 +85,21 @@ export interface UpdateRecurringAmountInput {
 }
 
 export interface MercadoPagoPreapprovalClient {
+  createUpgradePreference?(input: {
+    reference: string;
+    payerEmail: string;
+    amount: number;
+    currencyId: string;
+    backUrl: string;
+    notificationUrl: string;
+    expiresAt: Date;
+    startsAt: Date;
+  }): Promise<UpgradePreference>;
+  findUpgradePreferenceByReference?(
+    reference: string,
+  ): Promise<UpgradePreference | null>;
+  getUpgradePayment?(id: string): Promise<UpgradePayment>;
+  findUpgradePaymentsByReference?(reference: string): Promise<UpgradePayment[]>;
   create(input: CreatePreapprovalInput): Promise<CreatedPreapproval>;
   getAuthorizedPayment(id: string): Promise<AuthorizedPayment>;
   /** Reads one mandate by provider id; transport or payload failures reject. */

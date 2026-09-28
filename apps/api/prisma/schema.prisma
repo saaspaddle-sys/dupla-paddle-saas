@@ -150,12 +150,18 @@ model Subscription {
   /// still belong to the already-paid period, but must not resume renewal.
   pausedAt              DateTime? @map("paused_at") @db.Timestamptz(3)
   currentPeriodEndsAt   DateTime? @map("current_period_ends_at") @db.Timestamptz(3)
-  /// A paid plan change is only granted after an approved renewal matches
-  /// this immutable quote. Until then the current plan remains effective.
+  /// A scheduled downgrade is only applied after an approved renewal matches
+  /// this immutable quote. Until then the paid Pro entitlement remains effective.
   pendingPlan           SubscriptionPlan? @map("pending_plan")
   pendingPlanAmount     Decimal?          @map("pending_plan_amount") @db.Decimal(12, 2)
   pendingPlanCurrency   String?           @map("pending_plan_currency") @db.VarChar(3)
   pendingPlanConfirmedAt DateTime?        @map("pending_plan_confirmed_at") @db.Timestamptz(3)
+  pendingPlanEffectiveAt DateTime? @map("pending_plan_effective_at") @db.Timestamptz(3)
+  pendingPlanPaidAt DateTime? @map("pending_plan_paid_at") @db.Timestamptz(3)
+  /// The last verified recurring charge establishes the proration window.
+  currentPeriodStartedAt DateTime? @map("current_period_started_at") @db.Timestamptz(3)
+  currentPeriodAmount Decimal? @map("current_period_amount") @db.Decimal(12, 2)
+  currentPeriodCurrency String? @map("current_period_currency") @db.VarChar(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -165,6 +171,7 @@ model Subscription {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   paymentEvents PaymentEvent[]
   checkouts     SubscriptionCheckout[]
+  upgrades      SubscriptionUpgrade[]
   canceledPreapprovals SubscriptionPreapprovalTombstone[]
 
   @@map("subscriptions")
@@ -587,6 +594,40 @@ model SubscriptionCheckout {
   subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   @@index([subscriptionId, targetPlan])
   @@map("subscription_checkouts")
+}
+
+/// A one-time paid Basic-to-Pro change. The provider payment and recurring
+/// mandate update are separate effects; this row survives either failure.
+model SubscriptionUpgrade {
+  id String @id @default(uuid(7)) @db.Uuid
+  subscriptionId String @map("subscription_id") @db.Uuid
+  reference String @unique
+  preferenceId String? @unique @map("preference_id")
+  checkoutUrl String? @map("checkout_url")
+  paymentId String? @unique @map("payment_id")
+  preapprovalId String @map("preapproval_id")
+  amount Decimal @db.Decimal(12, 2)
+  recurringAmount Decimal @map("recurring_amount") @db.Decimal(12, 2)
+  currency String @db.VarChar(3)
+  periodStartedAt DateTime @map("period_started_at") @db.Timestamptz(3)
+  periodEndsAt DateTime @map("period_ends_at") @db.Timestamptz(3)
+  state UpgradeState @default(creating)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  @@index([subscriptionId, state])
+  @@map("subscription_upgrades")
+}
+
+enum UpgradeState {
+  creating
+  pending
+  paid
+  applied
+  review_required
+
+  @@map("upgrade_state")
 }
 
 /// Cross-instance lease for the in-process Nest reconciliation runner. The

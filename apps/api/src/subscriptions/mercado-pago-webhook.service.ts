@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import type {
 } from './mercado-pago-preapproval.client';
 import { MERCADO_PAGO_WEBHOOK_VERIFIER } from './mercado-pago-webhook-verifier';
 import type { MercadoPagoWebhookVerifier } from './mercado-pago-webhook-verifier';
+import { SubscriptionUpgradeService } from './subscription-upgrade.service';
 
 const CHARGE_NOTIFICATION_TYPE = 'subscription_authorized_payment';
 
@@ -32,6 +34,7 @@ export class MercadoPagoWebhookService {
     private readonly mercadoPago: MercadoPagoPreapprovalClient,
     @Inject(MERCADO_PAGO_WEBHOOK_VERIFIER)
     private readonly verifier: MercadoPagoWebhookVerifier,
+    @Optional() private readonly upgrades?: SubscriptionUpgradeService,
   ) {}
 
   async receive(
@@ -57,6 +60,11 @@ export class MercadoPagoWebhookService {
 
     const event = await this.persistOrGetEvent(payload);
     if (event.processedAt) return;
+    if (payload.type === 'payment') {
+      if (!this.upgrades) throw this.providerUnavailable();
+      await this.upgrades.processPaymentEvent(event.id, payload.data.id);
+      return;
+    }
     if (payload.type !== CHARGE_NOTIFICATION_TYPE) {
       await this.markProcessed(event.id);
       return;
@@ -80,6 +88,26 @@ export class MercadoPagoWebhookService {
     for (const event of events) {
       try {
         await this.processAuthorizedPayment(event.id, event.resourceId);
+        reconciled += 1;
+      } catch (error) {
+        if (!(error instanceof ServiceUnavailableException)) throw error;
+      }
+    }
+    return reconciled;
+  }
+
+  async reconcilePendingUpgradePayments(limit = 100): Promise<number> {
+    if (!this.upgrades) return 0;
+    const events = await this.prisma.paymentEvent.findMany({
+      where: { provider: 'mercado_pago', type: 'payment', processedAt: null },
+      orderBy: { receivedAt: 'asc' },
+      take: limit,
+      select: { id: true, resourceId: true },
+    });
+    let reconciled = 0;
+    for (const event of events) {
+      try {
+        await this.upgrades.processPaymentEvent(event.id, event.resourceId);
         reconciled += 1;
       } catch (error) {
         if (!(error instanceof ServiceUnavailableException)) throw error;
@@ -266,6 +294,8 @@ export class MercadoPagoWebhookService {
                 pendingPlanAmount: null,
                 pendingPlanCurrency: null,
                 pendingPlanConfirmedAt: null,
+                pendingPlanEffectiveAt: null,
+                pendingPlanPaidAt: null,
               },
             });
             return true;
@@ -331,6 +361,8 @@ export class MercadoPagoWebhookService {
                 pendingPlan: true,
                 pendingPlanAmount: true,
                 pendingPlanCurrency: true,
+                pendingPlanEffectiveAt: true,
+                pendingPlanPaidAt: true,
               },
             });
             if (
@@ -352,6 +384,8 @@ export class MercadoPagoWebhookService {
                 pendingPlan: current.pendingPlan,
                 pendingPlanAmount: current.pendingPlanAmount,
                 pendingPlanCurrency: current.pendingPlanCurrency,
+                pendingPlanEffectiveAt: current.pendingPlanEffectiveAt,
+                pendingPlanPaidAt: current.pendingPlanPaidAt,
               });
               return true;
             }
@@ -366,6 +400,8 @@ export class MercadoPagoWebhookService {
                 pendingPlanAmount: null,
                 pendingPlanCurrency: null,
                 pendingPlanConfirmedAt: null,
+                pendingPlanEffectiveAt: null,
+                pendingPlanPaidAt: null,
               },
             });
             return true;
@@ -403,9 +439,66 @@ export class MercadoPagoWebhookService {
         pendingPlanAmount: null,
         pendingPlanCurrency: null,
         pendingPlanConfirmedAt: null,
+        pendingPlanEffectiveAt: null,
+        pendingPlanPaidAt: null,
       },
     });
     return result.count;
+  }
+
+  async activatePaidDowngrades(now = new Date(), limit = 100): Promise<number> {
+    const candidates = await this.prisma.subscription.findMany({
+      where: {
+        plan: 'pro',
+        status: 'active',
+        pendingPlan: 'basic',
+        pendingPlanPaidAt: { not: null },
+        pendingPlanEffectiveAt: { lte: now },
+        currentPeriodEndsAt: { gt: now },
+      },
+      orderBy: { pendingPlanEffectiveAt: 'asc' },
+      take: limit,
+      select: { id: true },
+    });
+    let activated = 0;
+    for (const candidate of candidates) {
+      const changed = await withSubscriptionLifecycleLock(
+        this.prisma,
+        candidate.id,
+        async (tx) => {
+          const current = await tx.subscription.findUniqueOrThrow({
+            where: { id: candidate.id },
+          });
+          if (
+            current.plan !== 'pro' ||
+            current.status !== 'active' ||
+            current.pendingPlan !== 'basic' ||
+            !current.pendingPlanPaidAt ||
+            !current.pendingPlanEffectiveAt ||
+            current.pendingPlanEffectiveAt > now ||
+            !current.currentPeriodEndsAt ||
+            current.currentPeriodEndsAt <= now
+          )
+            return false;
+          await tx.subscription.update({
+            where: { id: current.id },
+            data: {
+              plan: 'basic',
+              maxTournaments: PLAN_MAX_TOURNAMENTS.basic,
+              pendingPlan: null,
+              pendingPlanAmount: null,
+              pendingPlanCurrency: null,
+              pendingPlanConfirmedAt: null,
+              pendingPlanEffectiveAt: null,
+              pendingPlanPaidAt: null,
+            },
+          });
+          return true;
+        },
+      );
+      if (changed) activated += 1;
+    }
+    return activated;
   }
 
   private async processAuthorizedPayment(
@@ -633,6 +726,10 @@ export class MercadoPagoWebhookService {
       pendingPlan?: 'free' | 'basic' | 'pro' | null;
       pendingPlanAmount?: { equals(value: Prisma.Decimal): boolean } | null;
       pendingPlanCurrency?: string | null;
+      pendingPlanEffectiveAt?: Date | null;
+      pendingPlanPaidAt?: Date | null;
+      currentPeriodStartedAt?: Date | null;
+      currentPeriodAmount?: { toFixed(digits: number): string } | null;
     } | null,
     options: { keepPaused?: boolean } = {},
   ): Promise<string> {
@@ -641,9 +738,11 @@ export class MercadoPagoWebhookService {
       : subscription!.id;
     const paidThrough = addOneMonth(payment.paidAt);
     const currentPeriodEndsAt = subscription?.currentPeriodEndsAt;
-    const appliesPendingUpgrade =
+    const appliesPendingDowngrade =
       !checkout &&
-      subscription?.pendingPlan === 'pro' &&
+      subscription?.plan === 'pro' &&
+      subscription.pendingPlan === 'basic' &&
+      subscription.pendingPlanEffectiveAt != null &&
       currentPeriodEndsAt !== null &&
       currentPeriodEndsAt !== undefined &&
       paidThrough > currentPeriodEndsAt &&
@@ -651,10 +750,13 @@ export class MercadoPagoWebhookService {
         new Prisma.Decimal(payment.amount),
       ) === true &&
       subscription.pendingPlanCurrency === payment.currencyId;
+    const activatesDowngradeNow =
+      appliesPendingDowngrade &&
+      payment.paidAt >= subscription.pendingPlanEffectiveAt!;
     const targetPlan = checkout
       ? checkout.targetPlan
-      : appliesPendingUpgrade
-        ? 'pro'
+      : activatesDowngradeNow
+        ? 'basic'
         : subscription!.plan;
     const effectivePeriodEndsAt =
       currentPeriodEndsAt && currentPeriodEndsAt > paidThrough
@@ -670,12 +772,24 @@ export class MercadoPagoWebhookService {
         providerStatus: options.keepPaused ? 'paused' : payment.invoiceStatus,
         pausedAt: options.keepPaused ? subscription?.pausedAt : null,
         currentPeriodEndsAt: effectivePeriodEndsAt,
-        ...(appliesPendingUpgrade
+        ...(paidThrough > (currentPeriodEndsAt ?? new Date(0))
+          ? {
+              currentPeriodStartedAt: payment.paidAt,
+              currentPeriodAmount: new Prisma.Decimal(payment.amount),
+              currentPeriodCurrency: payment.currencyId,
+            }
+          : {}),
+        ...(appliesPendingDowngrade && !activatesDowngradeNow
+          ? { pendingPlanPaidAt: payment.paidAt }
+          : {}),
+        ...(activatesDowngradeNow
           ? {
               pendingPlan: null,
               pendingPlanAmount: null,
               pendingPlanCurrency: null,
               pendingPlanConfirmedAt: null,
+              pendingPlanEffectiveAt: null,
+              pendingPlanPaidAt: null,
             }
           : {}),
       },

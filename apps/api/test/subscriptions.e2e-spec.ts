@@ -44,6 +44,11 @@ describe('Subscriptions checkout (e2e)', () => {
   const pausePreapproval = jest.fn<Promise<void>, [string]>();
   const resumePreapproval = jest.fn<Promise<void>, [string]>();
   const provider: jest.Mocked<MercadoPagoPreapprovalClient> = {
+    createUpgradePreference: jest.fn(),
+    findUpgradePreferenceByReference: jest.fn(),
+    getUpgradePayment: jest.fn(),
+    findUpgradePaymentsByReference: jest.fn(),
+    updateRecurringAmount: jest.fn(),
     create: jest.fn(),
     getAuthorizedPayment: jest.fn(),
     getPreapproval: jest.fn(),
@@ -58,6 +63,17 @@ describe('Subscriptions checkout (e2e)', () => {
   };
 
   function resetProviderMocks(): void {
+    (provider.createUpgradePreference as jest.Mock).mockReset();
+    (provider.findUpgradePreferenceByReference as jest.Mock)
+      .mockReset()
+      .mockResolvedValue(null);
+    (provider.getUpgradePayment as jest.Mock).mockReset();
+    (provider.findUpgradePaymentsByReference as jest.Mock)
+      .mockReset()
+      .mockResolvedValue([]);
+    (provider.updateRecurringAmount as jest.Mock)
+      .mockReset()
+      .mockResolvedValue(undefined);
     provider.create.mockReset().mockResolvedValue({
       id: `preapproval-${suffix}`,
       status: 'pending',
@@ -168,6 +184,9 @@ describe('Subscriptions checkout (e2e)', () => {
 
   afterAll(async () => {
     await prisma.club.deleteMany({ where: { ownerId } });
+    await prisma.subscriptionUpgrade.deleteMany({
+      where: { subscription: { userId: ownerId } },
+    });
     await prisma.paymentEvent.deleteMany({
       where: {
         OR: [
@@ -1040,6 +1059,126 @@ describe('Subscriptions checkout (e2e)', () => {
       maxTournaments: 3,
       providerStatus: 'authorized',
       pausedAt: null,
+    });
+  });
+
+  it('activates Pro only after a verified one-time payment and schedules Basic without an immediate entitlement loss', async () => {
+    const periodStartedAt = new Date(Date.now() - 10 * 86_400_000);
+    const periodEndsAt = new Date(Date.now() + 20 * 86_400_000);
+    await prisma.subscription.update({
+      where: { userId: ownerId },
+      data: {
+        plan: 'basic',
+        status: 'active',
+        maxTournaments: 3,
+        providerPreapprovalId: `upgrade-mandate-${suffix}`,
+        providerStatus: 'authorized',
+        pausedAt: null,
+        currentPeriodStartedAt: periodStartedAt,
+        currentPeriodEndsAt: periodEndsAt,
+        currentPeriodAmount: '100.00',
+        currentPeriodCurrency: 'ARS',
+      },
+    });
+    (provider.createUpgradePreference as jest.Mock).mockImplementation(
+      ({ reference }: { reference: string }) =>
+        Promise.resolve({
+          id: `preference-${suffix}`,
+          reference,
+          checkoutUrl: `https://checkout.test/upgrade-${suffix}`,
+        }),
+    );
+
+    const quote = await request(app.getHttpServer())
+      .get('/subscriptions/me/upgrade-quote')
+      .query({ targetPlan: 'pro' })
+      .set('Authorization', `Bearer ${token}`);
+    expect(quote.status).toBe(200);
+    const quotedAmount = (quote.body as { amount: string }).amount;
+    const missingExpectedAmount = await request(app.getHttpServer())
+      .post('/subscriptions/me/upgrade')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetPlan: 'pro' });
+    expect(missingExpectedAmount.status).toBe(400);
+    const staleCheckout = await request(app.getHttpServer())
+      .post('/subscriptions/me/upgrade')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetPlan: 'pro', expectedAmount: '0.01' });
+    expect(staleCheckout.status).toBe(409);
+    expect(staleCheckout.body).toMatchObject({
+      code: 'upgrade_quote_changed',
+    });
+    expect(
+      (provider.createUpgradePreference as jest.Mock).mock.calls,
+    ).toHaveLength(0);
+    const checkout = await request(app.getHttpServer())
+      .post('/subscriptions/me/upgrade')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetPlan: 'pro', expectedAmount: quotedAmount });
+    expect(checkout.status).toBe(201);
+    const upgrade = checkout.body as {
+      reference: string;
+      amount: string;
+      checkoutUrl: string;
+    };
+    expect(upgrade.checkoutUrl).toBe(`https://checkout.test/upgrade-${suffix}`);
+    expect(upgrade.amount).toBe(quotedAmount);
+    expect(
+      (
+        await prisma.subscription.findUniqueOrThrow({
+          where: { userId: ownerId },
+          select: { plan: true },
+        })
+      ).plan,
+    ).toBe('basic');
+
+    (provider.getUpgradePayment as jest.Mock).mockResolvedValue({
+      id: `upgrade-payment-${suffix}`,
+      status: 'approved',
+      reference: upgrade.reference,
+      amount: upgrade.amount,
+      currencyId: 'ARS',
+      approvedAt: new Date(),
+    });
+    const payment = await request(app.getHttpServer())
+      .post('/webhooks/mercado-pago')
+      .query({ 'data.id': `upgrade-payment-${suffix}` })
+      .set('x-signature', 'test-signature')
+      .set('x-request-id', `upgrade-request-${suffix}`)
+      .send({
+        id: `upgrade-event-${suffix}`,
+        type: 'payment',
+        data: { id: `upgrade-payment-${suffix}` },
+      });
+    expect(payment.status).toBe(200);
+    expect(
+      (provider.updateRecurringAmount as jest.Mock).mock.calls,
+    ).toContainEqual([
+      `upgrade-mandate-${suffix}`,
+      { amount: 200, currencyId: 'ARS' },
+    ]);
+    expect(
+      await prisma.subscription.findUniqueOrThrow({
+        where: { userId: ownerId },
+        select: { plan: true, maxTournaments: true },
+      }),
+    ).toEqual({ plan: 'pro', maxTournaments: 12 });
+
+    const downgrade = await request(app.getHttpServer())
+      .post('/subscriptions/me/downgrade')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ targetPlan: 'basic' });
+    expect(downgrade.status).toBe(200);
+    expect(downgrade.body).toMatchObject({
+      targetPlan: 'basic',
+      amount: '100.00',
+    });
+    const current = await request(app.getHttpServer())
+      .get('/subscriptions/me')
+      .set('Authorization', `Bearer ${token}`);
+    expect(current.body).toMatchObject({
+      plan: 'pro',
+      pendingDowngrade: { targetPlan: 'basic', amount: '100.00' },
     });
   });
 });

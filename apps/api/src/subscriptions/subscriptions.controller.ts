@@ -27,20 +27,32 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { JWT_SECURITY_SCHEME, SWAGGER_TAGS } from '../swagger/swagger.setup';
 import { CheckoutResponseDto } from './dto/checkout-response.dto';
+import {
+  ImmediateUpgradeCheckoutDto,
+  ImmediateUpgradeQuoteDto,
+} from './dto/immediate-upgrade.dto';
+import {
+  PlanDowngradeQuoteResponseDto,
+  PlanDowngradeRequestDto,
+} from './dto/plan-downgrade.dto';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import {
-  PlanUpgradeQuoteResponseDto,
+  CreateUpgradeRequestDto,
   PlanUpgradeRequestDto,
 } from './dto/plan-upgrade.dto';
 import { SubscriptionResponseDto } from './dto/subscription-response.dto';
 import { SubscriptionsService } from './subscriptions.service';
+import { SubscriptionUpgradeService } from './subscription-upgrade.service';
 
 @ApiTags(SWAGGER_TAGS.clubs)
 @Controller('subscriptions')
 @UseGuards(JwtAuthGuard, ClubScopeGuard)
 @ApiBearerAuth(JWT_SECURITY_SCHEME)
 export class SubscriptionsController {
-  constructor(private readonly subscriptions: SubscriptionsService) {}
+  constructor(
+    private readonly subscriptions: SubscriptionsService,
+    private readonly upgrades: SubscriptionUpgradeService,
+  ) {}
 
   @Get('me')
   @ApiOperation({
@@ -63,49 +75,81 @@ export class SubscriptionsController {
 
   @Get('me/upgrade-quote')
   @ApiOperation({
-    summary: 'Quotes a Basic-to-Pro upgrade for the next renewal',
+    summary: 'Quotes an immediate prorated Basic-to-Pro upgrade',
   })
-  @ApiOkResponse({ type: PlanUpgradeQuoteResponseDto })
+  @ApiOkResponse({ type: ImmediateUpgradeQuoteDto })
   @ApiBadRequestResponse({
     description: 'Request validation failed (`validation`).',
   })
   @ApiConflictResponse({
     description:
-      'The subscription is not an active auto-renewing Basic subscription.',
+      'An active paid Basic period with verified charge history is required.',
   })
   quoteUpgrade(
     @CurrentUser() user: AuthenticatedUser,
     @ClubId() clubId: string,
     @Query() dto: PlanUpgradeRequestDto,
-  ): Promise<PlanUpgradeQuoteResponseDto> {
+  ): Promise<ImmediateUpgradeQuoteDto> {
     void clubId;
-    return this.subscriptions.quoteUpgrade(user.id, dto.targetPlan);
+    void dto;
+    return this.upgrades.quote(user.id);
+  }
+
+  @Get('me/downgrade-quote')
+  @ApiOperation({ summary: 'Quotes Pro-to-Basic for the next paid renewal' })
+  @ApiOkResponse({ type: PlanDowngradeQuoteResponseDto })
+  quoteDowngrade(
+    @CurrentUser() user: AuthenticatedUser,
+    @ClubId() clubId: string,
+    @Query() dto: PlanDowngradeRequestDto,
+  ): Promise<PlanDowngradeQuoteResponseDto> {
+    void clubId;
+    void dto;
+    return this.subscriptions.quoteDowngrade(user.id);
+  }
+
+  @Post('me/downgrade')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Schedules Pro-to-Basic after the paid Pro period' })
+  @ApiOkResponse({ type: PlanDowngradeQuoteResponseDto })
+  @ApiConflictResponse({
+    description: 'The subscription cannot be downgraded now.',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'Mercado Pago could not confirm the recurring amount update.',
+  })
+  scheduleDowngrade(
+    @CurrentUser() user: AuthenticatedUser,
+    @ClubId() clubId: string,
+    @Body() dto: PlanDowngradeRequestDto,
+  ): Promise<PlanDowngradeQuoteResponseDto> {
+    void clubId;
+    void dto;
+    return this.subscriptions.scheduleDowngrade(user.id);
   }
 
   @Post('me/upgrade')
-  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Schedules Basic-to-Pro for the next approved Pro renewal',
+    summary: 'Starts a one-time prorated Basic-to-Pro payment',
   })
-  @ApiOkResponse({ type: PlanUpgradeQuoteResponseDto })
+  @ApiCreatedResponse({ type: ImmediateUpgradeCheckoutDto })
   @ApiBadRequestResponse({
     description: 'Request validation failed (`validation`).',
   })
   @ApiConflictResponse({
     description:
-      'The subscription is not an active auto-renewing Basic subscription.',
+      'The subscription is not eligible, another plan change is in progress, or the quoted amount changed (`upgrade_quote_changed`).',
   })
   @ApiServiceUnavailableResponse({
-    description:
-      'Mercado Pago could not confirm the recurring amount update (`billing_provider_unavailable`).',
+    description: 'The preference creation or recovery is unavailable.',
   })
   scheduleUpgrade(
     @CurrentUser() user: AuthenticatedUser,
     @ClubId() clubId: string,
-    @Body() dto: PlanUpgradeRequestDto,
-  ): Promise<PlanUpgradeQuoteResponseDto> {
+    @Body() dto: CreateUpgradeRequestDto,
+  ): Promise<ImmediateUpgradeCheckoutDto> {
     void clubId;
-    return this.subscriptions.scheduleUpgrade(user.id, dto.targetPlan);
+    return this.upgrades.createCheckout(user.id, dto.expectedAmount);
   }
 
   @Post('me/checkouts')

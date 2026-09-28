@@ -1066,7 +1066,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlanUpgradeQuoteResponseDto"
+                  "$ref": "#/components/schemas/ImmediateUpgradeQuoteDto"
                 }
               }
             }
@@ -1075,7 +1075,7 @@
             "description": "Request validation failed (`validation`)."
           },
           "409": {
-            "description": "The subscription is not an active auto-renewing Basic subscription."
+            "description": "An active paid Basic period with verified charge history is required."
           }
         },
         "security": [
@@ -1083,7 +1083,89 @@
             "jwt": []
           }
         ],
-        "summary": "Quotes a Basic-to-Pro upgrade for the next renewal",
+        "summary": "Quotes an immediate prorated Basic-to-Pro upgrade",
+        "tags": [
+          "Clubs"
+        ]
+      }
+    },
+    "/subscriptions/me/downgrade-quote": {
+      "get": {
+        "operationId": "Subscriptions_quoteDowngrade",
+        "parameters": [
+          {
+            "name": "targetPlan",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "basic"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanDowngradeQuoteResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Quotes Pro-to-Basic for the next paid renewal",
+        "tags": [
+          "Clubs"
+        ]
+      }
+    },
+    "/subscriptions/me/downgrade": {
+      "post": {
+        "operationId": "Subscriptions_scheduleDowngrade",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanDowngradeRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanDowngradeQuoteResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The subscription cannot be downgraded now."
+          },
+          "503": {
+            "description": "Mercado Pago could not confirm the recurring amount update."
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "summary": "Schedules Pro-to-Basic after the paid Pro period",
         "tags": [
           "Clubs"
         ]
@@ -1098,18 +1180,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PlanUpgradeRequestDto"
+                "$ref": "#/components/schemas/CreateUpgradeRequestDto"
               }
             }
           }
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlanUpgradeQuoteResponseDto"
+                  "$ref": "#/components/schemas/ImmediateUpgradeCheckoutDto"
                 }
               }
             }
@@ -1118,10 +1200,10 @@
             "description": "Request validation failed (`validation`)."
           },
           "409": {
-            "description": "The subscription is not an active auto-renewing Basic subscription."
+            "description": "The subscription is not eligible, another plan change is in progress, or the quoted amount changed (`upgrade_quote_changed`)."
           },
           "503": {
-            "description": "Mercado Pago could not confirm the recurring amount update (`billing_provider_unavailable`)."
+            "description": "The preference creation or recovery is unavailable."
           }
         },
         "security": [
@@ -1129,7 +1211,7 @@
             "jwt": []
           }
         ],
-        "summary": "Schedules Basic-to-Pro for the next approved Pro renewal",
+        "summary": "Starts a one-time prorated Basic-to-Pro payment",
         "tags": [
           "Clubs"
         ]
@@ -2273,18 +2355,59 @@
           "sets"
         ]
       },
-      "PlanUpgradeQuoteResponseDto": {
+      "PendingUpgradeDto": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "enum": [
+              "creating",
+              "pending",
+              "paid",
+              "review_required"
+            ],
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string",
+            "example": "7500.00"
+          },
+          "currency": {
+            "type": "string",
+            "example": "ARS"
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "periodEndsAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reference",
+          "amount",
+          "currency",
+          "checkoutUrl",
+          "periodEndsAt"
+        ]
+      },
+      "PlanDowngradeQuoteResponseDto": {
         "type": "object",
         "properties": {
           "targetPlan": {
             "type": "string",
             "enum": [
-              "pro"
+              "basic"
             ]
           },
           "amount": {
             "type": "string",
-            "example": "25000.00"
+            "example": "10000.00"
           },
           "currency": {
             "type": "string",
@@ -2342,7 +2465,16 @@
             "type": "object",
             "allOf": [
               {
-                "$ref": "#/components/schemas/PlanUpgradeQuoteResponseDto"
+                "$ref": "#/components/schemas/PendingUpgradeDto"
+              }
+            ]
+          },
+          "pendingDowngrade": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanDowngradeQuoteResponseDto"
               }
             ]
           }
@@ -2353,10 +2485,11 @@
           "maxTournaments",
           "currentPeriodEndsAt",
           "renewsAutomatically",
-          "pendingUpgrade"
+          "pendingUpgrade",
+          "pendingDowngrade"
         ]
       },
-      "PlanUpgradeRequestDto": {
+      "ImmediateUpgradeQuoteDto": {
         "type": "object",
         "properties": {
           "targetPlan": {
@@ -2364,10 +2497,115 @@
             "enum": [
               "pro"
             ]
+          },
+          "amount": {
+            "type": "string",
+            "example": "7500.00"
+          },
+          "recurringAmount": {
+            "type": "string",
+            "example": "25000.00"
+          },
+          "currency": {
+            "type": "string",
+            "example": "ARS"
+          },
+          "periodEndsAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-21T00:00:00.000Z"
+          }
+        },
+        "required": [
+          "targetPlan",
+          "amount",
+          "recurringAmount",
+          "currency",
+          "periodEndsAt"
+        ]
+      },
+      "PlanDowngradeRequestDto": {
+        "type": "object",
+        "properties": {
+          "targetPlan": {
+            "type": "string",
+            "enum": [
+              "basic"
+            ]
           }
         },
         "required": [
           "targetPlan"
+        ]
+      },
+      "CreateUpgradeRequestDto": {
+        "type": "object",
+        "properties": {
+          "targetPlan": {
+            "type": "string",
+            "enum": [
+              "pro"
+            ]
+          },
+          "expectedAmount": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.\\d{2}$",
+            "example": "7500.00"
+          }
+        },
+        "required": [
+          "targetPlan",
+          "expectedAmount"
+        ]
+      },
+      "ImmediateUpgradeCheckoutDto": {
+        "type": "object",
+        "properties": {
+          "targetPlan": {
+            "type": "string",
+            "enum": [
+              "pro"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "example": "7500.00"
+          },
+          "recurringAmount": {
+            "type": "string",
+            "example": "25000.00"
+          },
+          "currency": {
+            "type": "string",
+            "example": "ARS"
+          },
+          "periodEndsAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-21T00:00:00.000Z"
+          },
+          "reference": {
+            "type": "string",
+            "example": "9fd80e8b-cce4-475e-a80e-a900a8ff3be8"
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "example": "https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=..."
+          },
+          "reused": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "targetPlan",
+          "amount",
+          "recurringAmount",
+          "currency",
+          "periodEndsAt",
+          "reference",
+          "checkoutUrl",
+          "reused"
         ]
       },
       "CreateCheckoutDto": {

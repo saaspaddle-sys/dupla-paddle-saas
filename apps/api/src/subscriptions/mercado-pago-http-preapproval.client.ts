@@ -5,6 +5,7 @@ import {
   AmbiguousPreapprovalCreationError,
   DefinitivePreapprovalRejectionError,
   ProviderUnavailableError,
+  AmbiguousUpgradePreferenceError,
 } from './mercado-pago-preapproval.client';
 import type {
   AuthorizedPayment,
@@ -13,6 +14,8 @@ import type {
   MercadoPagoPreapprovalClient,
   PreapprovalDetails,
   UpdateRecurringAmountInput,
+  UpgradePayment,
+  UpgradePreference,
 } from './mercado-pago-preapproval.client';
 
 @Injectable()
@@ -20,6 +23,148 @@ export class MercadoPagoHttpPreapprovalClient implements MercadoPagoPreapprovalC
   private readonly logger = new Logger(MercadoPagoHttpPreapprovalClient.name);
 
   constructor(private readonly config: ConfigService) {}
+
+  async createUpgradePreference(input: {
+    reference: string;
+    payerEmail: string;
+    amount: number;
+    currencyId: string;
+    backUrl: string;
+    notificationUrl: string;
+    expiresAt: Date;
+    startsAt: Date;
+  }): Promise<UpgradePreference> {
+    const token = this.upgradeToken();
+    let response: Response;
+    try {
+      response = await fetch(
+        'https://api.mercadopago.com/checkout/preferences',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            items: [
+              {
+                title: 'Dupla Basic to Pro upgrade',
+                quantity: 1,
+                currency_id: input.currencyId,
+                unit_price: input.amount,
+              },
+            ],
+            payer: { email: input.payerEmail },
+            external_reference: input.reference,
+            notification_url: input.notificationUrl,
+            back_urls: {
+              success: input.backUrl,
+              pending: input.backUrl,
+              failure: input.backUrl,
+            },
+            auto_return: 'approved',
+            expires: true,
+            expiration_date_from: input.startsAt.toISOString(),
+            expiration_date_to: input.expiresAt.toISOString(),
+          }),
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+    } catch {
+      throw new AmbiguousUpgradePreferenceError();
+    }
+    if (!response.ok) throw new AmbiguousUpgradePreferenceError();
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch {
+      throw new AmbiguousUpgradePreferenceError();
+    }
+    if (!isUpgradePreference(data)) throw new AmbiguousUpgradePreferenceError();
+    return {
+      id: data.id,
+      reference: data.external_reference,
+      checkoutUrl: data.init_point,
+    };
+  }
+
+  async findUpgradePreferenceByReference(
+    reference: string,
+  ): Promise<UpgradePreference | null> {
+    const token = this.upgradeToken();
+    const url = new URL(
+      'https://api.mercadopago.com/checkout/preferences/search',
+    );
+    url.searchParams.set('external_reference', reference);
+    url.searchParams.set('limit', '10');
+    const data = await this.upgradeGetJson(url, token);
+    if (!isUpgradePreferenceSearch(data)) throw new ProviderUnavailableError();
+    if (data.total === 0) return null;
+    if (data.total !== 1 || data.elements.length !== 1)
+      throw new ProviderUnavailableError();
+    const detail = await this.upgradeGetJson(
+      new URL(
+        `https://api.mercadopago.com/checkout/preferences/${encodeURIComponent(data.elements[0].id)}`,
+      ),
+      token,
+    );
+    if (!isUpgradePreference(detail) || detail.external_reference !== reference)
+      throw new ProviderUnavailableError();
+    return {
+      id: detail.id,
+      reference,
+      checkoutUrl: detail.init_point,
+    };
+  }
+
+  async getUpgradePayment(id: string): Promise<UpgradePayment> {
+    const token = this.upgradeToken();
+    const data = await this.upgradeGetJson(
+      new URL(
+        `https://api.mercadopago.com/v1/payments/${encodeURIComponent(id)}`,
+      ),
+      token,
+    );
+    if (!isUpgradePayment(data)) throw new ProviderUnavailableError();
+    return toUpgradePayment(data);
+  }
+
+  async findUpgradePaymentsByReference(
+    reference: string,
+  ): Promise<UpgradePayment[]> {
+    const token = this.upgradeToken();
+    const url = new URL('https://api.mercadopago.com/v1/payments/search');
+    url.searchParams.set('external_reference', reference);
+    url.searchParams.set('limit', '10');
+    const data = await this.upgradeGetJson(url, token);
+    if (!isUpgradePaymentSearch(data) || data.paging.total > 10)
+      throw new ProviderUnavailableError();
+    return data.results.map(toUpgradePayment);
+  }
+
+  private upgradeToken(): string {
+    const token = this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN');
+    if (!token) throw new ProviderUnavailableError();
+    return token;
+  }
+
+  private async upgradeGetJson(url: URL, token: string): Promise<unknown> {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      throw new ProviderUnavailableError();
+    }
+    if (!response.ok) throw new ProviderUnavailableError();
+    try {
+      return await response.json();
+    } catch {
+      throw new ProviderUnavailableError();
+    }
+  }
 
   async create(input: CreatePreapprovalInput): Promise<CreatedPreapproval> {
     const accessToken = this.config.get<string>('MERCADO_PAGO_ACCESS_TOKEN');
@@ -551,6 +696,104 @@ function isPreapprovalDetails(value: unknown): value is {
 function sameAmount(value: string | number | undefined, expected: number) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric.toFixed(2) === expected.toFixed(2);
+}
+
+function isUpgradePreference(value: unknown): value is {
+  id: string;
+  external_reference: string;
+  init_point: string;
+} {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === 'string' &&
+    typeof record.external_reference === 'string' &&
+    typeof record.init_point === 'string' &&
+    isProviderHttpsUrl(record.init_point)
+  );
+}
+
+function isProviderHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isUpgradePreferenceSearch(value: unknown): value is {
+  total: number;
+  elements: Array<{ id: string }>;
+} {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Number.isInteger(record.total) &&
+    Array.isArray(record.elements) &&
+    record.elements.length <= 10 &&
+    record.elements.every((element: unknown) =>
+      Boolean(
+        element &&
+        typeof element === 'object' &&
+        typeof (element as Record<string, unknown>).id === 'string',
+      ),
+    )
+  );
+}
+
+type ProviderUpgradePayment = {
+  id: string | number;
+  status: string;
+  external_reference: string;
+  transaction_amount: string | number;
+  currency_id: string;
+  date_approved?: string | null;
+};
+
+function isUpgradePayment(value: unknown): value is ProviderUpgradePayment {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    (typeof record.id === 'string' || typeof record.id === 'number') &&
+    typeof record.status === 'string' &&
+    typeof record.external_reference === 'string' &&
+    (typeof record.transaction_amount === 'string' ||
+      typeof record.transaction_amount === 'number') &&
+    Number.isFinite(Number(record.transaction_amount)) &&
+    Number(record.transaction_amount) > 0 &&
+    typeof record.currency_id === 'string' &&
+    (record.date_approved === undefined ||
+      record.date_approved === null ||
+      (typeof record.date_approved === 'string' &&
+        !Number.isNaN(Date.parse(record.date_approved))))
+  );
+}
+
+function isUpgradePaymentSearch(value: unknown): value is {
+  paging: { total: number };
+  results: ProviderUpgradePayment[];
+} {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  const paging = record.paging as Record<string, unknown> | undefined;
+  return (
+    paging !== undefined &&
+    Number.isInteger(paging.total) &&
+    Array.isArray(record.results) &&
+    record.results.length <= 10 &&
+    record.results.every(isUpgradePayment)
+  );
+}
+
+function toUpgradePayment(value: ProviderUpgradePayment): UpgradePayment {
+  return {
+    id: String(value.id),
+    status: value.status,
+    reference: value.external_reference,
+    amount: String(value.transaction_amount),
+    currencyId: value.currency_id,
+    approvedAt: value.date_approved ? new Date(value.date_approved) : null,
+  };
 }
 function isAuthorizedPayment(value: unknown): value is {
   id: string | number;

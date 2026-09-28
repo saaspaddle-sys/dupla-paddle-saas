@@ -12,7 +12,7 @@ import { PLAN_MAX_TOURNAMENTS } from '../clubs/clubs.service';
 import { withSubscriptionLifecycleLock } from '../common/prisma/subscription-lifecycle-lock';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckoutResponseDto } from './dto/checkout-response.dto';
-import { PlanUpgradeQuoteResponseDto } from './dto/plan-upgrade.dto';
+import { PlanDowngradeQuoteResponseDto } from './dto/plan-downgrade.dto';
 import { SubscriptionResponseDto } from './dto/subscription-response.dto';
 import {
   AmbiguousPreapprovalCreationError,
@@ -40,6 +40,7 @@ export class SubscriptionsService {
     const subscription = await this.prisma.subscription.findUnique({
       where: { userId },
       select: {
+        id: true,
         plan: true,
         status: true,
         maxTournaments: true,
@@ -50,10 +51,18 @@ export class SubscriptionsService {
         pendingPlanAmount: true,
         pendingPlanCurrency: true,
         pendingPlanConfirmedAt: true,
+        pendingPlanEffectiveAt: true,
       },
     });
     if (!subscription)
       throw new InternalServerErrorException('club scope without subscription');
+    const pendingUpgrade = await this.prisma.subscriptionUpgrade.findFirst({
+      where: {
+        subscriptionId: subscription.id,
+        state: { in: ['creating', 'pending', 'paid', 'review_required'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
     return {
       plan: subscription.plan,
       status: subscription.status,
@@ -63,39 +72,51 @@ export class SubscriptionsService {
         subscription.providerPreapprovalId !== null &&
         subscription.providerStatus !== 'paused',
       pendingUpgrade:
-        subscription.pendingPlan === 'pro' &&
+        pendingUpgrade && pendingUpgrade.state !== 'applied'
+          ? {
+              state: pendingUpgrade.state,
+              reference: pendingUpgrade.reference,
+              amount: pendingUpgrade.amount.toFixed(2),
+              currency: pendingUpgrade.currency,
+              checkoutUrl: pendingUpgrade.checkoutUrl,
+              periodEndsAt: pendingUpgrade.periodEndsAt,
+            }
+          : null,
+      pendingDowngrade:
+        subscription.pendingPlan === 'basic' &&
         subscription.pendingPlanAmount &&
         subscription.pendingPlanCurrency &&
         subscription.pendingPlanConfirmedAt &&
-        subscription.currentPeriodEndsAt
+        subscription.pendingPlanEffectiveAt
           ? {
-              targetPlan: 'pro',
+              targetPlan: 'basic',
               amount: subscription.pendingPlanAmount.toFixed(2),
               currency: subscription.pendingPlanCurrency,
-              effectiveAt: subscription.currentPeriodEndsAt,
+              effectiveAt: subscription.pendingPlanEffectiveAt,
             }
           : null,
     };
   }
 
-  async quoteUpgrade(
-    userId: string,
-    targetPlan: 'pro',
-  ): Promise<PlanUpgradeQuoteResponseDto> {
-    const subscription = await this.findUpgradeCandidate(userId, targetPlan);
-    return this.upgradeQuoteFor(subscription);
+  async quoteDowngrade(userId: string): Promise<PlanDowngradeQuoteResponseDto> {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { userId },
+    });
+    if (!subscription)
+      throw new InternalServerErrorException('club scope without subscription');
+    this.assertDowngradeEligible(subscription);
+    return this.downgradeQuoteFor(subscription);
   }
 
-  async scheduleUpgrade(
+  async scheduleDowngrade(
     userId: string,
-    targetPlan: 'pro',
-  ): Promise<PlanUpgradeQuoteResponseDto> {
-    const subscription = await this.findUpgradeCandidate(userId, targetPlan);
-    if (
-      subscription.pendingPlan === 'pro' &&
-      subscription.pendingPlanConfirmedAt
-    )
-      return this.upgradeQuoteFor(subscription);
+  ): Promise<PlanDowngradeQuoteResponseDto> {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!subscription)
+      throw new InternalServerErrorException('club scope without subscription');
     if (!this.mercadoPago.updateRecurringAmount)
       throw this.providerUnavailable();
 
@@ -105,198 +126,122 @@ export class SubscriptionsService {
       async (tx) => {
         const current = await tx.subscription.findUniqueOrThrow({
           where: { id: subscription.id },
-          select: {
-            plan: true,
-            status: true,
-            providerPreapprovalId: true,
-            providerStatus: true,
-            currentPeriodEndsAt: true,
-            pendingPlan: true,
-            pendingPlanAmount: true,
-            pendingPlanCurrency: true,
-            pendingPlanConfirmedAt: true,
-          },
         });
-        this.assertUpgradeEligible(current, targetPlan);
-        const quote = this.upgradeQuoteFor(current);
+        this.assertDowngradeEligible(current);
+        const openUpgrade = await tx.subscriptionUpgrade.findFirst({
+          where: {
+            subscriptionId: current.id,
+            state: { in: ['creating', 'pending', 'paid', 'review_required'] },
+          },
+          select: { id: true },
+        });
+        if (openUpgrade)
+          throw new ConflictException({
+            code: 'plan_change_in_progress',
+            message: 'another plan change is in progress',
+          });
+        const quote = this.downgradeQuoteFor(current);
         if (!current.pendingPlan) {
           await tx.subscription.update({
-            where: { id: subscription.id },
+            where: { id: current.id },
             data: {
-              pendingPlan: targetPlan,
+              pendingPlan: 'basic',
               pendingPlanAmount: quote.amount,
               pendingPlanCurrency: quote.currency,
               pendingPlanConfirmedAt: null,
+              pendingPlanEffectiveAt: quote.effectiveAt,
+              pendingPlanPaidAt: null,
             },
           });
         }
         return {
           quote,
-          providerPreapprovalId: current.providerPreapprovalId,
+          preapprovalId: current.providerPreapprovalId!,
           confirmed: current.pendingPlanConfirmedAt !== null,
         };
       },
     );
     if (reservation.confirmed) return reservation.quote;
-
     try {
-      await this.mercadoPago.updateRecurringAmount(
-        reservation.providerPreapprovalId,
-        {
-          amount: Number(reservation.quote.amount),
-          currencyId: reservation.quote.currency,
-        },
-      );
+      await this.mercadoPago.updateRecurringAmount(reservation.preapprovalId, {
+        amount: Number(reservation.quote.amount),
+        currencyId: reservation.quote.currency,
+      });
     } catch {
       throw this.providerUnavailable();
     }
-
     return withSubscriptionLifecycleLock(
       this.prisma,
       subscription.id,
       async (tx) => {
         const current = await tx.subscription.findUniqueOrThrow({
           where: { id: subscription.id },
-          select: {
-            plan: true,
-            status: true,
-            providerPreapprovalId: true,
-            providerStatus: true,
-            currentPeriodEndsAt: true,
-            pendingPlan: true,
-            pendingPlanAmount: true,
-            pendingPlanCurrency: true,
-            pendingPlanConfirmedAt: true,
-          },
         });
-        if (current.plan === 'pro') return reservation.quote;
-        if (current.providerPreapprovalId !== reservation.providerPreapprovalId)
-          throw new ConflictException({
-            code: 'subscription_changed_during_upgrade',
-            message: 'the subscription changed while scheduling the upgrade',
-          });
+        this.assertDowngradeEligible(current);
         if (
-          current.pendingPlan !== targetPlan ||
-          !current.pendingPlanAmount ||
-          current.pendingPlanAmount.toFixed(2) !== reservation.quote.amount ||
+          current.providerPreapprovalId !== reservation.preapprovalId ||
+          current.pendingPlan !== 'basic' ||
+          current.pendingPlanAmount?.toFixed(2) !== reservation.quote.amount ||
           current.pendingPlanCurrency !== reservation.quote.currency
         )
           throw new ConflictException({
-            code: 'subscription_changed_during_upgrade',
-            message: 'the subscription changed while scheduling the upgrade',
+            code: 'subscription_changed_during_downgrade',
+            message: 'the subscription changed while scheduling the downgrade',
           });
-        this.assertUpgradeEligible(current, targetPlan);
-        if (current.pendingPlanConfirmedAt)
-          return this.upgradeQuoteFor(current);
-        await tx.subscription.update({
-          where: { id: subscription.id },
-          data: { pendingPlanConfirmedAt: new Date() },
-        });
-        return this.upgradeQuoteFor(current);
+        if (!current.pendingPlanConfirmedAt)
+          await tx.subscription.update({
+            where: { id: current.id },
+            data: { pendingPlanConfirmedAt: new Date() },
+          });
+        return reservation.quote;
       },
     );
   }
 
-  private async findUpgradeCandidate(userId: string, targetPlan: 'pro') {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { userId },
-      select: {
-        id: true,
-        plan: true,
-        status: true,
-        providerPreapprovalId: true,
-        providerStatus: true,
-        currentPeriodEndsAt: true,
-        pendingPlan: true,
-        pendingPlanAmount: true,
-        pendingPlanCurrency: true,
-        pendingPlanConfirmedAt: true,
-      },
-    });
-    if (!subscription)
-      throw new InternalServerErrorException('club scope without subscription');
-    this.assertUpgradeEligible(subscription, targetPlan);
-    return subscription;
-  }
-
-  private assertUpgradeEligible(
-    subscription: {
-      plan: 'free' | 'basic' | 'pro';
-      status: 'pending' | 'active' | 'past_due' | 'canceled';
-      providerPreapprovalId: string | null;
-      providerStatus: string | null;
-      currentPeriodEndsAt: Date | null;
-    },
-    targetPlan: 'pro',
-  ): asserts subscription is typeof subscription & {
-    plan: 'basic';
-    status: 'active';
-    providerPreapprovalId: string;
-    currentPeriodEndsAt: Date;
-  } {
-    if (targetPlan !== 'pro')
-      throw new ConflictException({
-        code: 'unsupported_plan_change',
-        message: 'only Basic to Pro upgrades are supported',
-      });
-    if (subscription.plan === 'pro')
-      throw new ConflictException({
-        code: 'already_on_pro',
-        message: 'the subscription is already on Pro',
-      });
-    if (subscription.plan !== 'basic')
-      throw new ConflictException({
-        code: 'upgrade_requires_basic',
-        message: 'a Basic subscription is required to upgrade to Pro',
-      });
-    if (subscription.status !== 'active')
-      throw new ConflictException({
-        code: 'upgrade_requires_active_subscription',
-        message: 'an active subscription is required to schedule an upgrade',
-      });
-    if (
-      !subscription.providerPreapprovalId ||
-      subscription.providerStatus === 'paused'
-    )
-      throw new ConflictException({
-        code: 'upgrade_requires_auto_renewal',
-        message: 'automatic renewal must be active to schedule an upgrade',
-      });
-    if (
-      !subscription.currentPeriodEndsAt ||
-      subscription.currentPeriodEndsAt <= new Date()
-    )
-      throw new ConflictException({
-        code: 'upgrade_current_period_ended',
-        message: 'the current paid period has ended',
-      });
-  }
-
-  private upgradeQuoteFor(subscription: {
-    currentPeriodEndsAt: Date;
+  private assertDowngradeEligible(subscription: {
+    plan: 'free' | 'basic' | 'pro';
+    status: 'pending' | 'active' | 'past_due' | 'canceled';
+    providerPreapprovalId: string | null;
+    providerStatus: string | null;
+    currentPeriodEndsAt: Date | null;
     pendingPlan: 'free' | 'basic' | 'pro' | null;
-    pendingPlanAmount: { toFixed(fractionDigits: number): string } | null;
-    pendingPlanCurrency: string | null;
-    pendingPlanConfirmedAt?: Date | null;
-  }): PlanUpgradeQuoteResponseDto {
+  }): void {
     if (
-      subscription.pendingPlan === 'pro' &&
-      subscription.pendingPlanAmount &&
-      subscription.pendingPlanCurrency
-    ) {
+      subscription.plan !== 'pro' ||
+      subscription.status !== 'active' ||
+      !subscription.providerPreapprovalId ||
+      subscription.providerStatus === 'paused' ||
+      !subscription.currentPeriodEndsAt ||
+      subscription.currentPeriodEndsAt <= new Date() ||
+      (subscription.pendingPlan !== null &&
+        subscription.pendingPlan !== 'basic')
+    )
+      throw new ConflictException({
+        code: 'downgrade_unavailable',
+        message: 'an active auto-renewing Pro subscription is required',
+      });
+  }
+
+  private downgradeQuoteFor(subscription: {
+    currentPeriodEndsAt: Date | null;
+    pendingPlanEffectiveAt: Date | null;
+    pendingPlan: 'free' | 'basic' | 'pro' | null;
+    pendingPlanAmount: { toFixed(digits: number): string } | null;
+    pendingPlanCurrency: string | null;
+  }): PlanDowngradeQuoteResponseDto {
+    if (subscription.pendingPlan === 'basic')
       return {
-        targetPlan: 'pro',
-        amount: subscription.pendingPlanAmount.toFixed(2),
-        currency: subscription.pendingPlanCurrency,
-        effectiveAt: subscription.currentPeriodEndsAt,
+        targetPlan: 'basic',
+        amount: subscription.pendingPlanAmount!.toFixed(2),
+        currency: subscription.pendingPlanCurrency!,
+        effectiveAt: subscription.pendingPlanEffectiveAt!,
       };
-    }
-    const pricing = this.pricingFor('pro');
+    const pricing = this.pricingFor('basic');
     return {
-      targetPlan: 'pro',
+      targetPlan: 'basic',
       amount: pricing.amount.toFixed(2),
       currency: pricing.currency,
-      effectiveAt: subscription.currentPeriodEndsAt,
+      effectiveAt: subscription.currentPeriodEndsAt!,
     };
   }
 
@@ -312,7 +257,7 @@ export class SubscriptionsService {
       throw new InternalServerErrorException('club scope without subscription');
     // A completed checkout is historical, but its mandate still belongs to the
     // subscription. A second checkout must not create a second recurring charge.
-    // An active Basic-to-Pro change uses the existing mandate instead.
+    // An active Basic-to-Pro change uses a one-time payment and the same mandate.
     if (subscription.providerPreapprovalId) {
       const retired = await this.retireExpiredPausedMandate(subscription);
       if (retired) {
@@ -335,7 +280,7 @@ export class SubscriptionsService {
         throw new ConflictException({
           code: 'subscription_upgrade_required',
           message:
-            'Basic is already active; use POST /subscriptions/me/upgrade to schedule Pro for the next renewal',
+            'Basic is already active; use POST /subscriptions/me/upgrade for a prorated immediate upgrade',
         });
       }
       throw new ConflictException({
@@ -527,6 +472,8 @@ export class SubscriptionsService {
             pendingPlanAmount: null,
             pendingPlanCurrency: null,
             pendingPlanConfirmedAt: null,
+            pendingPlanEffectiveAt: null,
+            pendingPlanPaidAt: null,
           },
         });
         return true;
