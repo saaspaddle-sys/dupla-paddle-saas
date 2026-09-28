@@ -14,6 +14,46 @@ Esta guía describe **cómo debe integrarse** la facturación en apps/web con lo
 
 Todos los endpoints de esta guía requieren JWT y que la cuenta administre un club. El contrato autoritativo es [OpenAPI](../../../apps/api/openapi.json).
 
+## Variables de entorno: qué configurar y de dónde obtenerlo
+
+La API carga el archivo **.env de la raíz del monorepo** (usar [.env.example](../../../.env.example) como plantilla). El frontend Next.js carga **apps/web/.env.local**. No colocar credenciales de Mercado Pago en el frontend ni usar variables NEXT_PUBLIC_ para este flujo.
+
+En el .env de la raíz, completar estas variables para facturación:
+
+~~~dotenv
+MERCADO_PAGO_ACCESS_TOKEN=<access-token-del-entorno>
+MERCADO_PAGO_BASIC_AMOUNT=<importe-mensual-basic>
+MERCADO_PAGO_PRO_AMOUNT=<importe-mensual-pro>
+MERCADO_PAGO_CURRENCY=ARS
+MERCADO_PAGO_BACK_URL=https://web.example.com/dashboard/suscripcion/retorno
+MERCADO_PAGO_WEBHOOK_URL=https://api.example.com/webhooks/mercado-pago
+MERCADO_PAGO_WEBHOOK_SECRET=<clave-secreta-de-webhooks>
+# Opcional: por defecto 60000 ms; mínimo 10000 ms.
+# MERCADO_PAGO_RECONCILIATION_INTERVAL_MS=60000
+~~~
+
+Los dominios example.com y los valores entre ángulos son **marcadores de posición**; no funcionan sin reemplazarlos. Los importes deben ser positivos, expresados en unidades de la moneda y con hasta dos decimales (por ejemplo, 10000.00). La API los valida y es la fuente del precio: no se obtienen de Mercado Pago ni se envían desde el navegador.
+
+| Variable | De dónde sale y qué comprobar |
+| --- | --- |
+| MERCADO_PAGO_ACCESS_TOKEN | En [Tus integraciones de Mercado Pago](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/overview), seleccionar la aplicación y copiar el Access Token de **credenciales de prueba** para desarrollo, o el de producción para cobros reales. Es privado y pertenece solo al backend. |
+| MERCADO_PAGO_BASIC_AMOUNT / MERCADO_PAGO_PRO_AMOUNT | Precios mensuales definidos por el negocio; mantener Pro por encima de Basic si se ofrecerá la mejora proporcional. No copiar el importe de una cotización puntual. |
+| MERCADO_PAGO_CURRENCY | Moneda de esos precios y de la cuenta utilizada; ARS es la configuración prevista en [.env.example](../../../.env.example). |
+| MERCADO_PAGO_BACK_URL | URL HTTPS pública **del frontend** a la que vuelve el comprador. La ruta de retorno es propuesta en esta guía y todavía debe implementarse; localhost no sirve como URL pública. No es un valor generado por Mercado Pago. |
+| MERCADO_PAGO_WEBHOOK_URL | URL HTTPS pública **de la API**, terminada en /webhooks/mercado-pago, como define el [controller](../../../apps/api/src/subscriptions/mercado-pago-webhook.controller.ts). Debe ser alcanzable por Mercado Pago; localhost o solo Docker interno no sirven. El backend la envía como notification_url al crear la operación. |
+| MERCADO_PAGO_WEBHOOK_SECRET | Clave de firma de la misma aplicación de Mercado Pago: [Tus integraciones → aplicación → Webhooks → Configurar notificación](https://www.mercadopago.com.ar/developers/es/docs/wix/additional-content/your-integrations/notifications/webhooks?scope=prod), donde se revela la clave generada. No es el Access Token ni una cadena inventada localmente. |
+| MERCADO_PAGO_RECONCILIATION_INTERVAL_MS | Opcional: intervalo del proceso de conciliación; la API usa 60000 ms por defecto y exige al menos 10000 ms. |
+
+Para **Suscripciones**, Mercado Pago indica configurar la URL de notificación al crear la operación; no depender de registrar esa URL desde el panel de Webhooks. El panel sí permite consultar la clave secreta usada para verificar la firma. Mantener token, secret, URLs y cuenta del proveedor alineados con el mismo entorno (prueba o producción). [Documentación oficial de Webhooks](https://www.mercadopago.com.ar/developers/es/docs/wix/additional-content/your-integrations/notifications/webhooks?scope=prod).
+
+En **apps/web/.env.local**, el único valor necesario para que el servidor web llame a la API en este flujo es:
+
+~~~dotenv
+API_BASE_URL=http://localhost:3000
+~~~
+
+Ese valor corresponde al puerto local de la API; el script del frontend usa el 3001. En un despliegue, reemplazarlo por la URL alcanzable **desde el servidor web**. API_BASE_URL no lleva NEXT_PUBLIC_ y no contiene ninguna credencial de Mercado Pago. Si se prepara el proyecto desde cero, DATABASE_URL y JWT_SECRET también deben configurarse en el .env raíz según [.env.example](../../../.env.example), pero son requisitos generales de la API, no credenciales de facturación. Mantener los archivos .env y .env.local fuera de Git.
+
 ## Contratos
 
 Las fechas llegan como ISO 8601. Los importes son strings decimales con dos cifras; **no convertirlos a float para enviarlos de vuelta**.
