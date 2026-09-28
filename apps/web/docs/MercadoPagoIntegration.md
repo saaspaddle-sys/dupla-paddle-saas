@@ -1,369 +1,156 @@
-# Integración frontend con Mercado Pago
+# Integración frontend de suscripciones con Mercado Pago
 
-Esta guía define cómo integrar en `apps/web` el flujo de suscripciones recurrentes que el backend ya expone. Está orientada al equipo frontend: explica responsabilidades, contratos, estados de interfaz, errores y criterios de prueba.
+Esta guía describe **cómo debe integrarse** la facturación en apps/web con los endpoints actuales de apps/api. Es una especificación para implementar y validar el frontend; **no implica que la pantalla ya esté implementada ni que el flujo haya sido validado en sandbox**.
 
-> **Regla principal:** el retorno del navegador desde Mercado Pago no confirma el pago. La única fuente de verdad para la interfaz es `GET /subscriptions/me`; el backend actualiza ese estado después de validar los webhooks y consultar el cobro canónico en Mercado Pago.
+> Fuente de verdad: GET /subscriptions/me. El retorno del navegador, un checkoutUrl o reused: true **no prueban** que un pago fue aprobado. El backend aplica los cambios después de verificar los eventos y el estado canónico en Mercado Pago.
 
-## 1. Alcance y límites
+## Recorrido rápido
 
-El frontend debe:
+1. Leer GET /subscriptions/me con el JWT de la cookie httpOnly desde el servidor.
+2. Mostrar solo las acciones compatibles con el estado efectivo y las operaciones pendientes.
+3. Para cobrar, pedir al backend un checkout y navegar a su checkoutUrl validada.
+4. Al volver de Mercado Pago, consultar otra vez GET /subscriptions/me. Si aún no cambió el estado, informar que se está verificando y permitir actualizar.
+5. Para baja o reanudación, ejecutar el endpoint correspondiente y volver a leer el estado. No actualizar el plan de forma optimista.
 
-- mostrar el plan y estado efectivos;
-- solicitar al backend la creación o reutilización de un checkout;
-- redirigir al usuario a la URL recibida;
-- recuperar el estado al volver de Mercado Pago;
-- solicitar la cancelación y volver a consultar el estado;
-- traducir códigos de error estables a mensajes útiles.
+Todos los endpoints de esta guía requieren JWT y que la cuenta administre un club. El contrato autoritativo es [OpenAPI](../../../apps/api/openapi.json).
 
-El frontend **no debe**:
+## Contratos
 
-- llamar directamente a la API de Mercado Pago;
-- conocer ni exponer `MERCADO_PAGO_ACCESS_TOKEN` o el secreto de webhooks;
-- construir precios, moneda, referencias o identificadores del proveedor;
-- llamar al webhook;
-- activar un plan por parámetros de URL, por `reused` o por haber regresado del checkout;
-- confiar en estado local para autorizar funcionalidades de pago.
+Las fechas llegan como ISO 8601. Los importes son strings decimales con dos cifras; **no convertirlos a float para enviarlos de vuelta**.
 
-El backend conserva las decisiones sensibles: identidad, club, precios, moneda, idempotencia, correlación del pago, activación, renovación y cancelación.
+~~~ts
+type Plan = "free" | "basic" | "pro";
+type Status = "pending" | "active" | "past_due" | "canceled";
 
-## 2. Flujo de extremo a extremo
-
-```mermaid
-sequenceDiagram
-    actor U as Usuario
-    participant W as apps/web
-    participant A as apps/api
-    participant MP as Mercado Pago
-
-    W->>A: GET /subscriptions/me + JWT
-    A-->>W: plan, status, maxTournaments
-    U->>W: Elegir plan
-    W->>A: POST /subscriptions/me/checkouts + JWT
-    A->>MP: Crear o recuperar preapproval
-    MP-->>A: init_point
-    A-->>W: checkoutUrl, reference, reused
-    W->>MP: Redirección externa
-    MP-->>W: Retorno a la aplicación
-    MP->>A: Webhook firmado
-    A->>MP: Consultar authorized payment
-    A->>A: Validar y actualizar suscripción
-    W->>A: GET /subscriptions/me + JWT
-    A-->>W: Estado efectivo
-```
-
-El retorno y el webhook pueden llegar en cualquier orden. Por eso la página de retorno debe tolerar que el plan todavía figure como `free` o `pending`, informar que se está verificando el pago y permitir actualizar el estado.
-
-## 3. Contrato que consume el frontend
-
-El contrato autoritativo es [`apps/api/openapi.json`](../../../apps/api/openapi.json). No se deben duplicar reglas de negocio que no aparezcan allí o en el backend.
-
-### Consultar la suscripción
-
-`GET /subscriptions/me`
-
-```ts
 type Subscription = {
-  plan: "free" | "basic" | "pro";
-  status: "pending" | "active" | "past_due" | "canceled";
+  plan: Plan;
+  status: Status;
   maxTournaments: number;
+  currentPeriodEndsAt: string | null;
+  renewsAutomatically: boolean;
+  pendingUpgrade: null | {
+    state: "creating" | "pending" | "paid" | "review_required";
+    reference: string;
+    amount: string;
+    currency: string;
+    checkoutUrl: string | null;
+    periodEndsAt: string;
+  };
+  pendingDowngrade: null | DowngradeQuote;
 };
-```
 
-### Crear o reutilizar un checkout
-
-`POST /subscriptions/me/checkouts`
-
-```ts
-type CreateCheckoutInput = {
-  plan: "basic" | "pro";
+type DowngradeQuote = {
+  targetPlan: "basic";
+  amount: string;
+  currency: string;
+  effectiveAt: string;
 };
 
-type Checkout = {
-  plan: "free" | "basic" | "pro";
-  reference: string;
-  checkoutUrl: string;
-  reused: boolean;
+type UpgradeQuote = {
+  targetPlan: "pro";
+  amount: string;
+  recurringAmount: string;
+  currency: string;
+  periodEndsAt: string;
 };
-```
+~~~
 
-`reused: true` significa que el backend reutilizó un checkout pendiente. No significa que el pago fue aprobado.
+| Endpoint | Entrada | Resultado y uso |
+| --- | --- | --- |
+| GET /subscriptions/me | — | Subscription efectivo. Leer sin caché después de cada operación y en el retorno. |
+| POST /subscriptions/me/checkouts | { "plan": "basic" \| "pro" } | Checkout recurrente nuevo o reutilizado: plan, reference, checkoutUrl, reused. Para iniciar desde Free o retomar un checkout pendiente del mismo plan; **no** para Basic → Pro. |
+| GET /subscriptions/me/upgrade-quote?targetPlan=pro | — | UpgradeQuote. amount es el pago único proporcional por el período actual; recurringAmount es el importe de futuras renovaciones Pro. No cobra ni activa Pro. |
+| POST /subscriptions/me/upgrade | { "targetPlan": "pro", "expectedAmount": "7500.00" } | Devuelve UpgradeQuote más reference, checkoutUrl y reused. El pago único inicia la mejora inmediata; Pro se activa **después de confirmar ese pago**, no en la próxima renovación. |
+| GET /subscriptions/me/downgrade-quote?targetPlan=basic | — | DowngradeQuote. Informa el importe Basic de la próxima renovación y effectiveAt; no modifica el plan. |
+| POST /subscriptions/me/downgrade | { "targetPlan": "basic" } | Programa el cambio y devuelve DowngradeQuote. Pro permanece hasta el final del período pagado; no se abre checkout ni hay cobro inmediato. |
+| POST /subscriptions/me/cancel | — | 200 sin cuerpo: detiene la renovación automática, **no** termina el período ya pagado. |
+| POST /subscriptions/me/resume | — | 200 sin cuerpo: reanuda la renovación pausada si el período pagado sigue vigente. |
 
-Un usuario con Basic activo no debe usar este endpoint para pasar a Pro. La UI debe consultar `GET /subscriptions/me/upgrade-quote?targetPlan=pro` y programar el cambio con `POST /subscriptions/me/upgrade` y `{ "targetPlan": "pro" }`. Pro se activa después de la próxima renovación aprobada por el importe Pro; no se crea otra suscripción.
+### Basic → Pro: precio confirmado por el usuario
 
-### Cancelar la suscripción
+1. Mostrar amount, currency, periodEndsAt y recurringAmount de la cotización.
+2. Cuando la persona confirme, enviar **exactamente** quote.amount como expectedAmount, conservando sus dos decimales. No recalcularlo en el navegador.
+3. Si POST responde 409 upgrade_quote_changed, obtener una nueva cotización y pedir **otra confirmación explícita** antes de reintentar. No cobrar automáticamente el nuevo valor.
+4. Validar checkoutUrl y navegar a Mercado Pago. Mantener Basic visible mientras pendingUpgrade no se aplique.
+5. En el retorno, volver a leer GET /subscriptions/me. Solo mostrar Pro cuando el backend lo devuelva como plan efectivo.
 
-`POST /subscriptions/me/cancel`
+El prorrateo usa el inicio del día de facturación en America/Argentina/Buenos_Aires (sin retroceder antes del inicio del período). Por eso la cotización permanece estable dentro del día si no cambian los datos de facturación, pero puede cambiar al comenzar otro día. El backend compara expectedAmount con el importe vigente antes de crear o reutilizar el pago.
 
-La operación exitosa devuelve `200` y pausa la renovación; no termina el período pagado ni permite inmediatamente otro checkout. Después, la UI debe volver a consultar `GET /subscriptions/me` en lugar de fabricar un estado local.
+Interpretación de pendingUpgrade:
 
-Todos los endpoints requieren el JWT del usuario autenticado y un club administrado por esa cuenta.
-
-## 4. Arquitectura recomendada en `apps/web`
-
-Mantener la integración separada por responsabilidad:
-
-```text
-src/
-├── app/(club)/dashboard/suscripcion/
-│   ├── actions.ts                    # Mutaciones server-side
-│   ├── page.tsx                      # Estado efectivo y selección de plan
-│   ├── loading.tsx                   # Estado de carga de la ruta
-│   ├── error.tsx                     # Recuperación ante errores inesperados
-│   ├── error-copy.ts                 # Códigos de API → mensajes seguros
-│   ├── _components/
-│   │   ├── CheckoutForm.tsx          # Formulario y pending state
-│   │   └── CancelSubscriptionForm.tsx
-│   └── retorno/
-│       └── page.tsx                  # Recuperación posterior al checkout
-└── services/subscriptions/
-    ├── contracts.ts                  # Tipos derivados del OpenAPI
-    ├── get-subscription.ts           # GET /subscriptions/me
-    ├── create-checkout.ts            # POST /subscriptions/me/checkouts
-    └── cancel-subscription.ts        # POST /subscriptions/me/cancel
-```
-
-Esta estructura sigue los patrones existentes:
-
-- [`src/services/api/client.ts`](../src/services/api/client.ts) centraliza HTTP, timeout y errores, y está marcado como `server-only`;
-- [`src/lib/session.ts`](../src/lib/session.ts) lee el JWT desde la cookie `httpOnly`;
-- las Server Actions coordinan formularios y mutaciones sin enviar el token al navegador;
-- las páginas y componentes se ocupan de presentación, accesibilidad y estados transitorios.
-
-Los nombres anteriores son una propuesta de implementación, no archivos existentes. No conviene agregar una Route Handler intermedia si la Server Action ya puede llamar de forma segura a `apps/api`.
-
-## 5. Carga inicial
-
-La página de suscripción debe ser un Server Component que:
-
-1. obtiene el token con `getSessionToken()`;
-2. redirige a login si no existe una sesión válida;
-3. llama a un servicio `server-only` para ejecutar `GET /subscriptions/me`;
-4. renderiza el plan, el estado y la cuota efectiva recibidos.
-
-La lectura privada debe usar `cache: "no-store"` para no reutilizar el estado de otra navegación ni mostrar una suscripción desactualizada después de un webhook o una cancelación.
-
-No usar el JSON estático de planes como fuente del estado contratado. Puede seguir sirviendo para contenido comercial, pero `plan`, `status` y `maxTournaments` deben venir del backend.
-
-`maxTournaments` representa el máximo de llaves simultáneas activas. No debe presentarse como “torneos creados por mes”.
-
-## 6. Inicio del checkout
-
-Implementar el cambio de plan con un `<form>` y una Server Action:
-
-1. validar en el servidor que `plan` sea `basic` o `pro`;
-2. recuperar el JWT desde la cookie `httpOnly`;
-3. llamar a `POST /subscriptions/me/checkouts`;
-4. verificar la URL devuelta;
-5. redirigir con `redirect(checkoutUrl)`.
-
-```ts
-"use server";
-
-import { redirect } from "next/navigation";
-
-export async function startCheckout(
-  _previousState: CheckoutActionState,
-  formData: FormData,
-): Promise<CheckoutActionState> {
-  let checkoutUrl: string;
-
-  try {
-    const plan = parsePaidPlan(formData.get("plan"));
-    const checkout = await createCheckout(plan);
-    checkoutUrl = assertAllowedCheckoutUrl(checkout.checkoutUrl);
-  } catch (error) {
-    return toCheckoutActionState(error);
-  }
-
-  redirect(checkoutUrl);
-}
-```
-
-`redirect()` lanza internamente una excepción de control, por lo que debe ejecutarse **fuera** del `try/catch`. Next.js admite URLs absolutas y, desde una Server Action, responde con una redirección `303`.
-
-### Validación defensiva de la URL
-
-Aunque la URL proviene del backend, validar como defensa en profundidad:
-
-- protocolo `https:`;
-- host incluido en una allowlist centralizada de dominios de checkout de Mercado Pago usados por los entornos del proyecto;
-- rechazo seguro si la URL no puede parsearse.
-
-No mantener la allowlist dispersa en componentes ni aceptar cualquier URL recibida. Tampoco abrir el checkout en un popup: una navegación completa funciona mejor con bloqueadores, accesibilidad y dispositivos móviles.
-
-### Estado pendiente del formulario
-
-Usar `useActionState` o `useFormStatus` para:
-
-- deshabilitar el botón mientras se procesa;
-- mostrar “Preparando checkout…”;
-- anunciar errores con `aria-live="polite"`;
-- evitar dobles clics accidentales.
-
-El bloqueo visual mejora la experiencia, pero la garantía real contra duplicados pertenece al backend. No generar claves de idempotencia ni referencias en el navegador.
-
-## 7. Página de retorno
-
-Configurar el backend para que `MERCADO_PAGO_BACK_URL` apunte a una ruta dedicada, por ejemplo:
-
-```text
-/dashboard/suscripcion/retorno
-```
-
-Al cargarla:
-
-1. ignorar cualquier parámetro que pretenda declarar el pago como aprobado;
-2. consultar `GET /subscriptions/me` con la sesión actual;
-3. si el plan pago está `active`, mostrar confirmación;
-4. si todavía no está activo, mostrar “Estamos verificando tu pago”;
-5. ofrecer “Actualizar estado” y “Volver a suscripción”.
-
-Si se implementa polling, debe ser acotado: por ejemplo, cada 2–3 segundos durante un máximo de 30–60 segundos, detenido al ocultar la pestaña y cancelado al desmontar el componente. Al terminar el plazo, mantener un botón de actualización manual. No dejar un polling infinito.
-
-No es necesario que el navegador permanezca abierto para que el backend procese el webhook.
-
-## 8. Estados de interfaz
-
-Renderizar explícitamente cada combinación relevante:
-
-| Plan/estado | Tratamiento recomendado |
+| state | Experiencia |
 | --- | --- |
-| `free` + `active` | Mostrar plan gratuito y permitir elegir `basic` o `pro`. |
-| `basic/pro` + `pending` | Informar que la suscripción está pendiente; no prometer beneficios activos. |
-| `basic/pro` + `active` | Mostrar plan vigente, cuota efectiva y acción de cancelación. |
-| `basic/pro` + `past_due` | Mostrar alerta de cobro pendiente y bloquear cambios incompatibles. |
-| `free` + `canceled` | Informar la cancelación y permitir iniciar un checkout nuevo. |
+| creating | Checkout en preparación; esperar y actualizar, sin disparar pagos paralelos. |
+| pending | Pago pendiente; permitir retomar el checkout si el backend lo devuelve como reutilizable. |
+| paid | Pago recibido, activación en verificación; no ofrecer otro pago. |
+| review_required | Excepción financiera: pedir contacto con soporte, sin prometer activación ni repetir el cobro. |
 
-No derivar permisos desde el nombre del plan. Para anticipar límites puede mostrarse `maxTournaments`, pero la autorización final siempre ocurre en el backend.
+### Pro → Basic: cambio programado
 
-## 9. Mapeo de errores
+Mostrar el importe y effectiveAt de GET downgrade-quote antes de confirmar. POST downgrade programa el importe Basic en el mandato y el cambio de plan para el final del período Pro. Después, leer pendingDowngrade en GET /subscriptions/me y mostrar la fecha programada. No presentar la operación como un cobro inmediato ni cambiar la UI a Basic antes de effectiveAt y de la confirmación del backend.
 
-`ApiError.body.code` es el dato estable para decidir la experiencia. No mostrar directamente `message`, stack traces ni detalles del proveedor.
+### Detener o reanudar la renovación
 
-| Código | UX recomendada |
+Antes de cancelar, explicar que la persona conserva el acceso pagado hasta currentPeriodEndsAt y que no recibe un reembolso por esta acción. Tras POST cancel, leer GET /subscriptions/me y mostrar renewsAutomatically: false; **no inventar un estado Free instantáneo**. Si sigue dentro del período, ofrecer POST resume. Si este responde 409 paused_subscription_period_ended, actualizar el estado y no presentar una reanudación exitosa.
+
+## Arquitectura sugerida en apps/web
+
+Mantener la integración en el servidor: [apiFetch](../src/services/api/client.ts) y [getSessionToken](../src/lib/session.ts) ya permiten llamar a la API sin exponer el JWT al navegador. Los servicios de suscripción deben ser server-only; las Server Actions validan las entradas y coordinan las mutaciones. La página de suscripción renderiza el estado efectivo y los formularios cliente solo gestionan pending, errores y confirmaciones.
+
+- No llamar a Mercado Pago desde el frontend ni exponer MERCADO_PAGO_ACCESS_TOKEN, firmas de webhook o datos de tarjeta. El backend conserva precios, identidad, idempotencia y activación.
+- Usar cache: "no-store" para GET /subscriptions/me y ambas cotizaciones.
+- Validar el plan y expectedAmount también en la Server Action. El botón deshabilitado no es una frontera de seguridad.
+- Antes de redirigir, exigir HTTPS y un host exacto permitido de Mercado Pago; rechazar URLs malformadas, credenciales incrustadas y puertos inesperados. No aceptar cualquier URL externa.
+- Ejecutar redirect(checkoutUrl) **fuera** del try/catch que captura errores de API.
+- Manejar respuestas 200 sin cuerpo de cancel y resume sin intentar parsear JSON obligatorio.
+- Revalidar la vista y leer de nuevo GET /subscriptions/me después de cada mutación. No persistir JWT, reference ni checkoutUrl en localStorage.
+- No registrar tokens ni URLs completas de checkout en logs o analytics. Un evento de retorno no debe llamarse «pago aprobado».
+- Usar maxTournaments del backend como cuota efectiva; no derivar permisos del nombre del plan ni del JSON comercial.
+
+La ruta actual de [suscripción](../src/app/(club)/dashboard/suscripcion/page.tsx) todavía es una pantalla provisional. La estructura de servicios, acciones y ruta de retorno de esta guía es una **propuesta**, no una descripción de archivos implementados.
+
+## Retorno desde Mercado Pago
+
+Configurar MERCADO_PAGO_BACK_URL con una URL HTTPS absoluta que apunte a una ruta de retorno del frontend. Es configuración del backend, no un valor que deba construir el navegador.
+
+La ruta debe ignorar parámetros de éxito o fracaso como prueba de pago. Consultar GET /subscriptions/me y distinguir suscripción nueva, mejora pendiente y plan ya activo. Si la verificación sigue pendiente, mostrar un estado neutral con botón «Actualizar estado» y enlace a la suscripción. Puede hacerse polling acotado (por ejemplo, cada 3 segundos hasta 60 segundos), pausado al ocultar la pestaña y cancelado al desmontar el componente. Nunca dejar polling infinito. El webhook se procesa aunque el navegador se cierre.
+
+## Errores que la UI debe distinguir
+
+Usar ApiError.body.code; no mostrar message, detalles internos ni respuestas crudas del proveedor.
+
+| Código | Tratamiento |
 | --- | --- |
-| `validation` | “El plan seleccionado no es válido.” |
-| `unauthenticated` | Limpiar la sesión inválida y redirigir a login. |
-| `club_required` | Llevar al flujo de creación/configuración del club. |
-| `checkout_pending_for_another_plan` | Informar que ya existe un checkout pendiente para otro plan. |
-| `checkout_in_progress` | Mantener el formulario bloqueado brevemente y permitir reintentar. |
-| `subscription_upgrade_required` | Dirigir al cambio de Basic a Pro en `/dashboard/suscripcion`; no iniciar otro checkout. |
-| `active_subscription_must_be_cancelled` | Explicar que cancelar la renovación conserva el período pagado y que otro checkout estará disponible cuando termine. |
-| `billing_checkout_recovery_required` | Informar que se está verificando una operación anterior; no crear intentos repetidos. |
-| `billing_provider_rejected` | Indicar que Mercado Pago rechazó la operación y permitir reintentar más tarde. |
-| `billing_provider_unavailable` | Mostrar indisponibilidad temporal y conservar el estado actual. |
-| `billing_not_configured` | Mostrar un error operativo y ofrecer contacto con soporte; no sugerir que el usuario lo resuelva. |
-| desconocido | Mensaje genérico, identificador de seguimiento y logging sin datos sensibles. |
+| validation | Corregir la entrada; expectedAmount debe conservar el formato decimal de dos posiciones. |
+| unauthenticated / club_required | Reautenticar o llevar al flujo de club, respectivamente. |
+| upgrade_quote_changed | Obtener nueva cotización y pedir nueva confirmación. |
+| upgrade_unavailable / upgrade_proration_unavailable / upgrade_charge_history_unavailable / upgrade_period_changed | No abrir checkout; actualizar estado y explicar que la mejora no está disponible o requiere soporte. |
+| downgrade_unavailable / plan_change_in_progress / subscription_changed_during_downgrade | No duplicar el cambio; actualizar estado. |
+| checkout_pending_for_another_plan / checkout_in_progress | Explicar el checkout existente o en preparación; no iniciar otro en paralelo. |
+| subscription_upgrade_required | Llevar al flujo de mejora Basic → Pro, no al checkout recurrente. |
+| active_subscription_must_be_cancelled / paused_subscription_must_be_resumed / paused_subscription_period_ended | Mostrar el período vigente y la acción correcta; no crear otra suscripción sobre él. |
+| billing_checkout_recovery_required / billing_upgrade_recovery_required | Operación en recuperación; actualizar más tarde, sin pagos repetidos. |
+| billing_provider_rejected / billing_provider_unavailable / billing_not_configured | Error del proveedor o configuración; conservar el estado y ofrecer reintento o soporte según corresponda. |
+| desconocido | Mensaje genérico y registro interno sin datos sensibles. |
 
-Un `503` no siempre significa lo mismo: la UI debe distinguir `billing_checkout_recovery_required`, `billing_provider_unavailable` y `billing_not_configured` por su código.
+Un 503 puede representar recuperación, indisponibilidad del proveedor o configuración faltante: decidir por code, no solo por statusCode.
 
-## 10. Cancelación
+## Validación antes de dar el frontend por terminado
 
-La cancelación debe usar un formulario separado con confirmación clara. La acción server-side:
+- Sin sesión y sin club: navegación correcta y token nunca visible en cliente.
+- Free: checkouts Basic y Pro, nuevo y reutilizado; retorno antes y después del webhook.
+- Basic activo: cotización, pago proporcional, 409 por cambio de precio, pendingUpgrade en sus cuatro estados y activación Pro confirmada por GET.
+- Pro activo: cotización y programación de Basic; mantener Pro hasta la fecha efectiva.
+- Renovación: cancel conserva el período, resume dentro del período y error al vencer.
+- Errores de proveedor, doble envío, URL de checkout inválida y estados past_due/canceled.
+- Accesibilidad: formularios semánticos, foco visible y errores anunciados sin depender solo del color.
+- Sandbox real: cuentas compradora y vendedora de prueba separadas, correo comprador coincidente con el usuario de Dupla, webhooks demorados/repetidos y comprobación final con GET /subscriptions/me. **Las pruebas unitarias no sustituyen esta validación.**
 
-1. recupera la sesión;
-2. ejecuta `POST /subscriptions/me/cancel`;
-3. actualiza o revalida la vista;
-4. vuelve a obtener la suscripción efectiva.
+## Referencias
 
-No aplicar una baja optimista. La implementación actual cancela el mandato y devuelve la cuenta al plan gratuito; el backend también impide que un cobro tardío reactive una suscripción cancelada.
-
-La confirmación debe explicar el efecto real sobre la cuota, sin afirmar que los torneos existentes serán eliminados: el límite bloquea nuevas creaciones, no borra datos ya creados.
-
-## 11. Seguridad y privacidad
-
-- Mantener `API_BASE_URL` como variable server-side; no crear una copia `NEXT_PUBLIC_*` para este flujo.
-- Enviar `Authorization: Bearer <token>` únicamente desde servicios `server-only`.
-- No persistir el JWT, `checkoutUrl`, `reference` ni IDs de Mercado Pago en `localStorage`.
-- No registrar tokens, URLs completas con parámetros, firmas o payloads sensibles en analytics.
-- Validar el plan nuevamente en la Server Action; una UI deshabilitada no es una frontera de seguridad.
-- Mantener CSP y navegación externa compatibles con los dominios exactos utilizados por Mercado Pago.
-- Tratar el `checkoutUrl` como un dato sensible de corta vida y no compartirlo entre usuarios.
-
-## 12. Accesibilidad y experiencia
-
-- Usar formularios y botones semánticos, no `div` con handlers.
-- Conservar foco visible y devolverlo al control que originó un error.
-- Anunciar estados pendientes y errores mediante una región `aria-live`.
-- No depender solo del color para `pending`, `past_due` o `canceled`.
-- Avisar antes de abandonar el sitio hacia Mercado Pago.
-- Mantener textos de acción específicos: “Suscribirme al plan Basic” es mejor que “Continuar”.
-- Evitar animaciones o timers que oculten información esencial.
-
-## 13. Observabilidad
-
-Registrar eventos de producto sin datos de pago:
-
-- intento de checkout por plan;
-- checkout creado o reutilizado (`reused`);
-- redirección iniciada;
-- retorno recibido;
-- estado efectivo observado después del retorno;
-- cancelación solicitada y resultado.
-
-Los logs deben incluir códigos internos de correlación cuando existan, pero nunca el access token, la firma del webhook ni información de tarjeta. El frontend no debe enviar un evento “pago aprobado” basándose únicamente en la página de retorno.
-
-## 14. Estrategia de pruebas
-
-### Casos funcionales mínimos
-
-1. usuario sin sesión;
-2. usuario autenticado sin club;
-3. consulta de plan `free`;
-4. checkout nuevo para `basic` y `pro`;
-5. reutilización de checkout pendiente;
-6. doble envío del formulario;
-7. checkout pendiente para otro plan;
-8. retorno antes de que se procese el webhook;
-9. activación después del webhook;
-10. estados `past_due` y `canceled`;
-11. cancelación exitosa y fallida;
-12. URL de checkout inválida o no permitida;
-13. cada código de error de la tabla anterior;
-14. navegación por teclado y anuncios de lectores de pantalla.
-
-### Entorno de Mercado Pago
-
-- usar credenciales y cuentas de prueba, nunca datos reales;
-- el correo del comprador de prueba debe coincidir con el correo del usuario autenticado en Dupla, porque el backend verifica esa identidad;
-- probar comprador y vendedor con cuentas separadas;
-- comprobar el resultado final con `GET /subscriptions/me`, no con la pantalla mostrada por Mercado Pago;
-- validar casos de webhook demorado, repetido y fuera de orden.
-
-### Gates del paquete
-
-```bash
-pnpm --filter web lint
-pnpm --filter web build
-```
-
-El paquete todavía no declara un runner de tests. Al incorporarlo, priorizar pruebas de servicios, mapeo de errores, estados de las Server Actions y la pantalla de retorno; los flujos reales del proveedor deben probarse en un entorno controlado.
-
-## 15. Orden recomendado de implementación
-
-1. Crear tipos y servicios `server-only` desde OpenAPI.
-2. Reemplazar el mock de la pantalla por `GET /subscriptions/me`.
-3. Implementar el mapeo centralizado de errores.
-4. Implementar checkout con Server Action y estado pendiente.
-5. Agregar la página de retorno y recuperación acotada.
-6. Implementar cancelación sin estado optimista.
-7. Agregar accesibilidad, observabilidad y pruebas.
-8. Validar el flujo completo con cuentas de prueba.
-
-## 16. Fuentes y documentación relacionada
-
-### Interna
-
-- [Integración backend completa](../../../docs/mercado-pago-integration.md)
+- [Flujo y archivos del backend](../../../docs/mercado-pago-integration.md)
 - [Contrato OpenAPI](../../../apps/api/openapi.json)
 - [Consumo de API desde el frontend](API.md)
 - [Patrón de autenticación frontend](LoginIntegration.md)
-- [Arquitectura frontend](Architecture.md)
-
-### Oficial
-
-- [Mercado Pago: crear una suscripción](https://www.mercadopago.com.ar/developers/es/reference/online-payments/subscriptions/create-preapproval/post)
-- [Mercado Pago: consultar una suscripción](https://www.mercadopago.com.ar/developers/es/reference/online-payments/subscriptions/get-preapproval/get)
-- [Mercado Pago: notificaciones Webhooks](https://www.mercadopago.com.ar/developers/es/docs/wix/additional-content/your-integrations/notifications/webhooks?scope=prod)
 - [Next.js: formularios y Server Actions](https://nextjs.org/docs/app/guides/forms)
-- [Next.js: `redirect`](https://nextjs.org/docs/app/api-reference/functions/redirect)
+- [Next.js: redirect](https://nextjs.org/docs/app/api-reference/functions/redirect)
