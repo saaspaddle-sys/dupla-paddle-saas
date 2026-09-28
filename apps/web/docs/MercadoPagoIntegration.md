@@ -20,7 +20,7 @@ La API carga el archivo **.env de la raíz del monorepo** (usar [.env.example](.
 
 En el .env de la raíz, completar estas variables para facturación:
 
-~~~dotenv
+```dotenv
 MERCADO_PAGO_ACCESS_TOKEN=<access-token-del-entorno>
 MERCADO_PAGO_BASIC_AMOUNT=<importe-mensual-basic>
 MERCADO_PAGO_PRO_AMOUNT=<importe-mensual-pro>
@@ -30,33 +30,33 @@ MERCADO_PAGO_WEBHOOK_URL=https://api.example.com/webhooks/mercado-pago
 MERCADO_PAGO_WEBHOOK_SECRET=<clave-secreta-de-webhooks>
 # Opcional: por defecto 60000 ms; mínimo 10000 ms.
 # MERCADO_PAGO_RECONCILIATION_INTERVAL_MS=60000
-~~~
+```
 
 Los dominios example.com y los valores entre ángulos son **marcadores de posición**; no funcionan sin reemplazarlos. Los importes deben ser positivos, expresados en unidades de la moneda y con hasta dos decimales (por ejemplo, 10000.00). La API los valida y es la fuente del precio: no se obtienen de Mercado Pago ni se envían desde el navegador.
 
-| Variable | De dónde sale y qué comprobar |
-| --- | --- |
-| MERCADO_PAGO_ACCESS_TOKEN | En [Tus integraciones → aplicación → Credenciales de prueba](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/additional-content/your-integrations/credentials), copiar el **Access Token de prueba** para desarrollo, o el de producción para cobros reales. Es privado y pertenece solo al backend; esta integración no necesita Public Key en el frontend. |
-| MERCADO_PAGO_BASIC_AMOUNT / MERCADO_PAGO_PRO_AMOUNT | Precios mensuales definidos por el negocio; mantener Pro por encima de Basic si se ofrecerá la mejora proporcional. No copiar el importe de una cotización puntual. |
-| MERCADO_PAGO_CURRENCY | Moneda de esos precios y de la cuenta utilizada; ARS es la configuración prevista en [.env.example](../../../.env.example). |
-| MERCADO_PAGO_BACK_URL | URL HTTPS pública **del frontend** a la que vuelve el comprador. La ruta de retorno es propuesta en esta guía y todavía debe implementarse; localhost no sirve como URL pública. No es un valor generado por Mercado Pago. |
-| MERCADO_PAGO_WEBHOOK_URL | URL HTTPS pública **de la API**, terminada en /webhooks/mercado-pago, como define el [controller](../../../apps/api/src/subscriptions/mercado-pago-webhook.controller.ts). Debe ser alcanzable por Mercado Pago; localhost o solo Docker interno no sirven. El backend la valida como requisito y la envía como `notification_url` al crear la preferencia de pago de Basic → Pro, **pero no** al crear la suscripción recurrente. |
-| MERCADO_PAGO_WEBHOOK_SECRET | Clave de firma de la misma aplicación de Mercado Pago: [Tus integraciones → aplicación → Webhooks → Configurar notificación](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/additional-content/your-integrations/notifications/webhooks), donde se revela la clave generada. No es el Access Token ni una cadena inventada localmente. |
-| MERCADO_PAGO_RECONCILIATION_INTERVAL_MS | Opcional: intervalo del proceso de conciliación; la API usa 60000 ms por defecto y exige al menos 10000 ms. |
+| Variable                                            | De dónde sale y qué comprobar                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MERCADO_PAGO_ACCESS_TOKEN                           | En [Tus integraciones → aplicación → Credenciales de prueba](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/additional-content/your-integrations/credentials), copiar el **Access Token de prueba** para desarrollo, o el de producción para cobros reales. Es privado y pertenece solo al backend; esta integración no necesita Public Key en el frontend.                                                       |
+| MERCADO_PAGO_BASIC_AMOUNT / MERCADO_PAGO_PRO_AMOUNT | Precios mensuales definidos por el negocio; mantener Pro por encima de Basic si se ofrecerá la mejora proporcional. No copiar el importe de una cotización puntual.                                                                                                                                                                                                                                                                |
+| MERCADO_PAGO_CURRENCY                               | Moneda de esos precios y de la cuenta utilizada; ARS es la configuración prevista en [.env.example](../../../.env.example).                                                                                                                                                                                                                                                                                                        |
+| MERCADO_PAGO_BACK_URL                               | URL HTTPS pública **del frontend** a la que vuelve el comprador. La ruta de retorno es propuesta en esta guía y todavía debe implementarse; localhost no sirve como URL pública. No es un valor generado por Mercado Pago.                                                                                                                                                                                                         |
+| MERCADO_PAGO_WEBHOOK_URL                            | URL HTTPS pública **de la API**, terminada en /webhooks/mercado-pago, como define el [controller](../../../apps/api/src/subscriptions/mercado-pago-webhook.controller.ts). Debe ser alcanzable por Mercado Pago; localhost o solo Docker interno no sirven. El backend la valida como requisito y la envía como `notification_url` al crear la preferencia de pago de Basic → Pro, **pero no** al crear la suscripción recurrente. |
+| MERCADO_PAGO_WEBHOOK_SECRET                         | Clave de firma de la misma aplicación de Mercado Pago: [Tus integraciones → aplicación → Webhooks → Configurar notificación](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/additional-content/your-integrations/notifications/webhooks), donde se revela la clave generada. No es el Access Token ni una cadena inventada localmente.                                                                            |
+| MERCADO_PAGO_RECONCILIATION_INTERVAL_MS             | Opcional: intervalo del proceso de conciliación; la API usa 60000 ms por defecto y exige al menos 10000 ms.                                                                                                                                                                                                                                                                                                                        |
 
 Para **Suscripciones**, la [documentación de Webhooks](https://www.mercadopago.com.ar/developers/es/docs/subscriptions/additional-content/your-integrations/notifications/webhooks) dice que configurar la URL desde el panel no aplica y remite a la configuración durante la creación del pago. Sin embargo, la [referencia de `POST /preapproval`](https://www.mercadopago.com.ar/developers/es/reference/online-payments/subscriptions/create-preapproval/post) no documenta `notification_url`, y el cliente actual no lo envía. Por eso **no se puede dar por probada la entrega de webhooks recurrentes** con solo completar estas variables o el panel. Consultar el [bloqueo de validación](#límite-actual-de-los-webhooks-recurrentes) antes de cerrar las pruebas de sandbox.
 
 En **apps/web/.env.local**, el único valor necesario para que el servidor web llame a la API en este flujo es:
 
-~~~dotenv
+```dotenv
 API_BASE_URL=http://localhost:3000
-~~~
+```
 
 Ese valor corresponde al puerto local de la API; el script del frontend usa el 3001. En un despliegue, reemplazarlo por la URL alcanzable **desde el servidor web**. API_BASE_URL no lleva NEXT_PUBLIC_ y no contiene ninguna credencial de Mercado Pago. Si se prepara el proyecto desde cero, DATABASE_URL y JWT_SECRET también deben configurarse en el .env raíz según [.env.example](../../../.env.example), pero son requisitos generales de la API, no credenciales de facturación. Mantener los archivos .env y .env.local fuera de Git.
 
 ## Probar la integración en desarrollo
 
-Este recorrido usa la API en `localhost:3000`, Next.js en `localhost:3001` y dos URL HTTPS públicas temporales. **Todavía no es una prueba completa desde la UI**: la [pantalla de suscripción](../src/app/(club)/dashboard/suscripcion/page.tsx) es provisional y la ruta de retorno descrita más abajo no está implementada. Primero se puede probar el contrato de la API y la recepción del webhook; el recorrido de navegador queda pendiente de la implementación frontend y del límite de notificaciones recurrentes indicado al final de esta sección.
+Este recorrido usa la API en `localhost:3000`, Next.js en `localhost:3001` y dos URL HTTPS públicas temporales. **Todavía no es una prueba completa desde la UI**: la [pantalla de suscripción](<../src/app/(club)/dashboard/suscripcion/page.tsx>) es provisional y la ruta de retorno descrita más abajo no está implementada. Primero se puede probar el contrato de la API y la recepción del webhook; el recorrido de navegador queda pendiente de la implementación frontend y del límite de notificaciones recurrentes indicado al final de esta sección.
 
 ### 1. Obtener credenciales y preparar las cuentas
 
@@ -68,26 +68,26 @@ Este recorrido usa la API en `localhost:3000`, Next.js en `localhost:3001` y dos
 
 Desde la raíz del monorepo, preparar el `.env` a partir de [`.env.example`](../../../.env.example), configurar `DATABASE_URL`, `JWT_SECRET`, los precios y la moneda. En `apps/web/.env.local`, configurar `API_BASE_URL=http://localhost:3000`. Preparar dependencias y base de datos:
 
-~~~powershell
+```powershell
 pnpm install
 pnpm db:up
 pnpm db:migrate
-~~~
+```
 
 Mantener la API y el frontend corriendo en **terminales separadas**:
 
-~~~powershell
+```powershell
 pnpm start:dev
 # En otra terminal:
 pnpm dev:web
-~~~
+```
 
 Instalar [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/) y abrir **dos terminales adicionales**, una por servicio:
 
-~~~powershell
+```powershell
 cloudflared tunnel --url http://localhost:3000
 cloudflared tunnel --url http://localhost:3001
-~~~
+```
 
 Cada [Quick Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/) entrega una URL `https://…trycloudflare.com` distinta. Usar la del puerto **3000** para `MERCADO_PAGO_WEBHOOK_URL=https://<túnel-api>/webhooks/mercado-pago`. Para probar solo la API hoy, usar la ruta existente `MERCADO_PAGO_BACK_URL=https://<túnel-web>/dashboard/suscripcion`; cuando se implemente el retorno, cambiarla a `https://<túnel-web>/dashboard/suscripcion/retorno`. La página existente es provisional y **no verifica pagos al regresar**. `API_BASE_URL` sigue apuntando a la API local desde el servidor Next.js. Reiniciar la API después de cambiar su `.env`. Los Quick Tunnels son temporales, no para producción: si cambian las URL al reiniciarlos, actualizar las variables y toda configuración de prueba en Mercado Pago antes de crear otro checkout. Si existe `config.yaml` en `.cloudflared`, Quick Tunnel puede no funcionar; revisar la [limitación oficial](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/).
 
@@ -114,7 +114,7 @@ En el checkout de Mercado Pago, iniciar sesión como **comprador de prueba** e i
 
 Las fechas llegan como ISO 8601. Los importes son strings decimales con dos cifras; **no convertirlos a float para enviarlos de vuelta**.
 
-~~~ts
+```ts
 type Plan = "free" | "basic" | "pro";
 type Status = "pending" | "active" | "past_due" | "canceled";
 
@@ -149,18 +149,18 @@ type UpgradeQuote = {
   currency: string;
   periodEndsAt: string;
 };
-~~~
+```
 
-| Endpoint | Entrada | Resultado y uso |
-| --- | --- | --- |
-| GET /subscriptions/me | — | Subscription efectivo. Leer sin caché después de cada operación y en el retorno. |
-| POST /subscriptions/me/checkouts | { "plan": "basic" \| "pro" } | Checkout recurrente nuevo o reutilizado: plan, reference, checkoutUrl, reused. Para iniciar desde Free o retomar un checkout pendiente del mismo plan; **no** para Basic → Pro. |
-| GET /subscriptions/me/upgrade-quote?targetPlan=pro | — | UpgradeQuote. amount es el pago único proporcional por el período actual; recurringAmount es el importe de futuras renovaciones Pro. No cobra ni activa Pro. |
-| POST /subscriptions/me/upgrade | { "targetPlan": "pro", "expectedAmount": "7500.00" } | Devuelve UpgradeQuote más reference, checkoutUrl y reused. El pago único inicia la mejora inmediata; Pro se activa **después de confirmar ese pago**, no en la próxima renovación. |
-| GET /subscriptions/me/downgrade-quote?targetPlan=basic | — | DowngradeQuote. Informa el importe Basic de la próxima renovación y effectiveAt; no modifica el plan. |
-| POST /subscriptions/me/downgrade | { "targetPlan": "basic" } | Programa el cambio y devuelve DowngradeQuote. Pro permanece hasta el final del período pagado; no se abre checkout ni hay cobro inmediato. |
-| POST /subscriptions/me/cancel | — | 200 sin cuerpo: detiene la renovación automática, **no** termina el período ya pagado. |
-| POST /subscriptions/me/resume | — | 200 sin cuerpo: reanuda la renovación pausada si el período pagado sigue vigente. |
+| Endpoint                                               | Entrada                                              | Resultado y uso                                                                                                                                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET /subscriptions/me                                  | —                                                    | Subscription efectivo. Leer sin caché después de cada operación y en el retorno.                                                                                                   |
+| POST /subscriptions/me/checkouts                       | { "plan": "basic" \| "pro" }                         | Checkout recurrente nuevo o reutilizado: plan, reference, checkoutUrl, reused. Para iniciar desde Free o retomar un checkout pendiente del mismo plan; **no** para Basic → Pro.    |
+| GET /subscriptions/me/upgrade-quote?targetPlan=pro     | —                                                    | UpgradeQuote. amount es el pago único proporcional por el período actual; recurringAmount es el importe de futuras renovaciones Pro. No cobra ni activa Pro.                       |
+| POST /subscriptions/me/upgrade                         | { "targetPlan": "pro", "expectedAmount": "7500.00" } | Devuelve UpgradeQuote más reference, checkoutUrl y reused. El pago único inicia la mejora inmediata; Pro se activa **después de confirmar ese pago**, no en la próxima renovación. |
+| GET /subscriptions/me/downgrade-quote?targetPlan=basic | —                                                    | DowngradeQuote. Informa el importe Basic de la próxima renovación y effectiveAt; no modifica el plan.                                                                              |
+| POST /subscriptions/me/downgrade                       | { "targetPlan": "basic" }                            | Programa el cambio y devuelve DowngradeQuote. Pro permanece hasta el final del período pagado; no se abre checkout ni hay cobro inmediato.                                         |
+| POST /subscriptions/me/cancel                          | —                                                    | 200 sin cuerpo: detiene la renovación automática, **no** termina el período ya pagado.                                                                                             |
+| POST /subscriptions/me/resume                          | —                                                    | 200 sin cuerpo: reanuda la renovación pausada si el período pagado sigue vigente.                                                                                                  |
 
 ### Basic → Pro: precio confirmado por el usuario
 
@@ -174,11 +174,11 @@ El prorrateo usa el inicio del día de facturación en America/Argentina/Buenos_
 
 Interpretación de pendingUpgrade:
 
-| state | Experiencia |
-| --- | --- |
-| creating | Checkout en preparación; esperar y actualizar, sin disparar pagos paralelos. |
-| pending | Pago pendiente; permitir retomar el checkout si el backend lo devuelve como reutilizable. |
-| paid | Pago recibido, activación en verificación; no ofrecer otro pago. |
+| state           | Experiencia                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| creating        | Checkout en preparación; esperar y actualizar, sin disparar pagos paralelos.                   |
+| pending         | Pago pendiente; permitir retomar el checkout si el backend lo devuelve como reutilizable.      |
+| paid            | Pago recibido, activación en verificación; no ofrecer otro pago.                               |
 | review_required | Excepción financiera: pedir contacto con soporte, sin prometer activación ni repetir el cobro. |
 
 ### Pro → Basic: cambio programado
@@ -203,7 +203,7 @@ Mantener la integración en el servidor: [apiFetch](../src/services/api/client.t
 - No registrar tokens ni URLs completas de checkout en logs o analytics. Un evento de retorno no debe llamarse «pago aprobado».
 - Usar maxTournaments del backend como cuota efectiva; no derivar permisos del nombre del plan ni del JSON comercial.
 
-La ruta actual de [suscripción](../src/app/(club)/dashboard/suscripcion/page.tsx) todavía es una pantalla provisional. La estructura de servicios, acciones y ruta de retorno de esta guía es una **propuesta**, no una descripción de archivos implementados.
+La ruta actual de [suscripción](<../src/app/(club)/dashboard/suscripcion/page.tsx>) todavía es una pantalla provisional. La estructura de servicios, acciones y ruta de retorno de esta guía es una **propuesta**, no una descripción de archivos implementados.
 
 ## Retorno desde Mercado Pago
 
@@ -215,19 +215,19 @@ La ruta debe ignorar parámetros de éxito o fracaso como prueba de pago. Consul
 
 Usar ApiError.body.code; no mostrar message, detalles internos ni respuestas crudas del proveedor.
 
-| Código | Tratamiento |
-| --- | --- |
-| validation | Corregir la entrada; expectedAmount debe conservar el formato decimal de dos posiciones. |
-| unauthenticated / club_required | Reautenticar o llevar al flujo de club, respectivamente. |
-| upgrade_quote_changed | Obtener nueva cotización y pedir nueva confirmación. |
-| upgrade_unavailable / upgrade_proration_unavailable / upgrade_charge_history_unavailable / upgrade_period_changed | No abrir checkout; actualizar estado y explicar que la mejora no está disponible o requiere soporte. |
-| downgrade_unavailable / plan_change_in_progress / subscription_changed_during_downgrade | No duplicar el cambio; actualizar estado. |
-| checkout_pending_for_another_plan / checkout_in_progress | Explicar el checkout existente o en preparación; no iniciar otro en paralelo. |
-| subscription_upgrade_required | Llevar al flujo de mejora Basic → Pro, no al checkout recurrente. |
-| active_subscription_must_be_cancelled / paused_subscription_must_be_resumed / paused_subscription_period_ended | Mostrar el período vigente y la acción correcta; no crear otra suscripción sobre él. |
-| billing_checkout_recovery_required / billing_upgrade_recovery_required | Operación en recuperación; actualizar más tarde, sin pagos repetidos. |
-| billing_provider_rejected / billing_provider_unavailable / billing_not_configured | Error del proveedor o configuración; conservar el estado y ofrecer reintento o soporte según corresponda. |
-| desconocido | Mensaje genérico y registro interno sin datos sensibles. |
+| Código                                                                                                            | Tratamiento                                                                                               |
+| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| validation                                                                                                        | Corregir la entrada; expectedAmount debe conservar el formato decimal de dos posiciones.                  |
+| unauthenticated / club_required                                                                                   | Reautenticar o llevar al flujo de club, respectivamente.                                                  |
+| upgrade_quote_changed                                                                                             | Obtener nueva cotización y pedir nueva confirmación.                                                      |
+| upgrade_unavailable / upgrade_proration_unavailable / upgrade_charge_history_unavailable / upgrade_period_changed | No abrir checkout; actualizar estado y explicar que la mejora no está disponible o requiere soporte.      |
+| downgrade_unavailable / plan_change_in_progress / subscription_changed_during_downgrade                           | No duplicar el cambio; actualizar estado.                                                                 |
+| checkout_pending_for_another_plan / checkout_in_progress                                                          | Explicar el checkout existente o en preparación; no iniciar otro en paralelo.                             |
+| subscription_upgrade_required                                                                                     | Llevar al flujo de mejora Basic → Pro, no al checkout recurrente.                                         |
+| active_subscription_must_be_cancelled / paused_subscription_must_be_resumed / paused_subscription_period_ended    | Mostrar el período vigente y la acción correcta; no crear otra suscripción sobre él.                      |
+| billing_checkout_recovery_required / billing_upgrade_recovery_required                                            | Operación en recuperación; actualizar más tarde, sin pagos repetidos.                                     |
+| billing_provider_rejected / billing_provider_unavailable / billing_not_configured                                 | Error del proveedor o configuración; conservar el estado y ofrecer reintento o soporte según corresponda. |
+| desconocido                                                                                                       | Mensaje genérico y registro interno sin datos sensibles.                                                  |
 
 Un 503 puede representar recuperación, indisponibilidad del proveedor o configuración faltante: decidir por code, no solo por statusCode.
 
