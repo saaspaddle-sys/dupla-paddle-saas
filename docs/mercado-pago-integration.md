@@ -272,16 +272,17 @@ Antes de desplegar, `pnpm run db:verify` debe confirmar que las migraciones y `s
 
 ### Errores que debe manejar el frontend
 
-| Código                                  | Significado                                                                                                                |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `billing_not_configured`                | Faltan credenciales, precios o URLs válidas.                                                                               |
-| `checkout_pending_for_another_plan`     | Ya existe un intento recuperable para otro plan.                                                                           |
-| `checkout_in_progress`                  | Otro request está creando el checkout.                                                                                     |
-| `billing_checkout_recovery_required`    | El resultado puede existir en Mercado Pago, pero todavía no está correlacionado localmente. No se debe crear otro mandato. |
-| `billing_provider_rejected`             | Mercado Pago rechazó definitivamente la creación.                                                                          |
-| `subscription_upgrade_required`         | Ya hay un plan Basic activo: usar `POST /subscriptions/me/upgrade` con `targetPlan: "pro"`, no crear otro checkout.                 |
-| `active_subscription_must_be_cancelled` | Ya hay un mandato activo. Cancelar la renovación no habilita otro checkout hasta que termine el período pagado.                 |
-| `billing_provider_unavailable`          | La lectura/cancelación canónica no está disponible; corresponde reintentar.                                                |
+| Código                                  | Significado                                                                                                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `billing_not_configured`                | Faltan credenciales, precios o URLs válidas.                                                                                                                     |
+| `checkout_pending_for_another_plan`     | Ya existe un intento recuperable para otro plan.                                                                                                                 |
+| `checkout_in_progress`                  | Otro request está creando el checkout.                                                                                                                           |
+| `billing_checkout_recovery_required`    | El resultado puede existir en Mercado Pago, pero todavía no está correlacionado localmente. No se debe crear otro mandato.                                       |
+| `billing_provider_rejected`             | Mercado Pago rechazó definitivamente la creación.                                                                                                                |
+| `subscription_upgrade_required`         | Ya hay un plan Basic activo: consultar la cotización y usar `POST /subscriptions/me/upgrade` con `targetPlan: "pro"` y `expectedAmount`, no crear otro checkout. |
+| `upgrade_quote_changed`                 | El importe enviado en `expectedAmount` ya no coincide con el vigente: solicitar una nueva cotización antes de crear el checkout.                                 |
+| `active_subscription_must_be_cancelled` | Ya hay un mandato activo. Cancelar la renovación no habilita otro checkout hasta que termine el período pagado.                                                  |
+| `billing_provider_unavailable`          | La lectura/cancelación canónica no está disponible; corresponde reintentar.                                                                                      |
 
 Los errores exclusivos del webhook (`invalid_webhook_signature`, `webhook_event_identity_conflict`) son operativos y no deberían aparecer en una pantalla de usuario.
 
@@ -297,3 +298,23 @@ Los errores exclusivos del webhook (`invalid_webhook_signature`, `webhook_event_
 - [ ] Un checkout repetido reutiliza la referencia o entra en recuperación; nunca crea un segundo mandato por incertidumbre.
 - [ ] Un webhook duplicado no extiende dos veces el período ni cambia dos veces la cuota.
 - [ ] Un vencimiento reduce la cuota antes de aceptar nuevos torneos.
+
+## 11. Cambios de plan de una suscripción activa
+
+### Basic → Pro inmediato
+
+`GET /subscriptions/me/upgrade-quote?targetPlan=pro` calcula el importe proporcional a partir del **importe y el inicio del período pagado verificados**, no del precio vigente de Basic. La prorrata usa como referencia el inicio del día calendario en `America/Argentina/Buenos_Aires` (sin retroceder antes del inicio del período), por lo que una cotización nueva mantiene el mismo importe durante ese día. El día actual se cuenta completo aunque la mejora se solicite más tarde. El importe se calcula en centavos y se redondea una sola vez.
+
+El cliente debe mostrar `amount` y enviar ese mismo valor como `expectedAmount` en `POST /subscriptions/me/upgrade` junto con `targetPlan: "pro"`. Si el importe cambió entre ambas solicitudes, por ejemplo al cruzar la medianoche, el POST responde `409 upgrade_quote_changed` **sin reservar ni crear un checkout**; se debe consultar la cotización nuevamente y pedir confirmación al usuario. Si ya existe una operación de mejora abierta, GET devuelve el importe reservado y POST reutiliza ese mismo checkout: no se cambia su precio a medianoche. Un POST exitoso reserva la operación en `subscription_upgrades` y devuelve un `checkoutUrl` de Checkout Pro para **un solo pago**. No crea otra suscripción recurrente.
+
+El retorno del navegador no cambia el plan. El webhook firmado de tipo `payment` (o el reconciliador, si falta el webhook) consulta el pago canónico, compara referencia, importe y moneda, y registra `paid`. Después actualiza el importe del mandato recurrente existente a Pro; solo entonces cambia `plan` y `maxTournaments` a Pro. El checkout vence al finalizar el período Basic cotizado. `GET /subscriptions/me` expone `pendingUpgrade` con `creating`, `pending`, `paid` o `review_required` mientras la operación no se aplica.
+
+Si el pago se aprobó pero el período, mandato o importe ya no permiten aplicar Pro, el estado queda en `review_required`: **no se concede Pro automáticamente ni se intenta un segundo cobro**. Operaciones debe comparar `subscription_upgrades.payment_id` con el pago canónico de Mercado Pago, revisar el importe actual del mandato y decidir la devolución o corrección manual. No se automatiza una devolución ante una respuesta ambigua del proveedor. Este caso requiere monitoreo operativo antes del lanzamiento.
+
+### Pro → Basic en la siguiente renovación
+
+`GET /subscriptions/me/downgrade-quote?targetPlan=basic` devuelve el precio Basic y `effectiveAt`; `POST /subscriptions/me/downgrade` conserva Pro durante el período ya pagado, registra `pendingDowngrade` y cambia el importe del **mismo mandato** a Basic. Un cobro de renovación aprobado, correlacionado con ese mandato, importe y moneda, activa Basic cuando corresponde; si Mercado Pago cobra antes del límite, se conserva Pro hasta `effectiveAt` y el reconciliador aplica el cambio después. No hay reembolso proporcional por bajar de plan.
+
+Las operaciones de cambio de plan usan el lock de ciclo de vida de la suscripción. No se permite programar una baja mientras hay una mejora abierta. La migración `20260926000000_unify_paid_plan_changes` descarta mejoras programadas antiguas porque no había datos productivos que preservar.
+
+**Verificación pendiente para habilitar el flujo real:** ejecutar un pago Checkout Pro y una renovación con credenciales de prueba de Mercado Pago, comprobar webhooks firmados y respuesta canónica, y ensayar el procedimiento operativo para `review_required`. Las pruebas automatizadas usan un proveedor simulado y no sustituyen esta validación externa.
