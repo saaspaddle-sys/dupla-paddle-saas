@@ -1,4 +1,6 @@
 import bcrypt from 'bcryptjs';
+import { CreateOrganizerPlayerDto } from './dto/create-organizer-player.dto';
+import { ListOrganizerPlayersDto } from './dto/list-organizer-players.dto';
 import { RegisterPlayerDto } from './dto/register-player.dto';
 import { PlayersService } from './players.service';
 import { Prisma } from '../generated/prisma/client';
@@ -13,6 +15,7 @@ type PrismaMock = {
   user: { findUnique: jest.Mock; create: jest.Mock };
   player: {
     findUnique: jest.Mock;
+    findMany: jest.Mock;
     create: jest.Mock;
     updateManyAndReturn: jest.Mock;
   };
@@ -56,6 +59,7 @@ describe('PlayersService', () => {
       user: { findUnique: jest.fn(), create: jest.fn() },
       player: {
         findUnique: jest.fn(),
+        findMany: jest.fn(),
         create: jest.fn(),
         updateManyAndReturn: jest.fn(),
       },
@@ -174,231 +178,124 @@ describe('PlayersService', () => {
     });
   });
 
-  describe('when the dni already has an ownerless profile (claim)', () => {
-    it('links the existing profile instead of creating a new one, keeping its id', async () => {
+  describe('when the dni has an ownerless profile', () => {
+    it('requires a later email-verification claim instead of auto-linking by DNI', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.player.findUnique.mockResolvedValue({
-        id: 'orphan-player',
+        id: 'ownerless-player',
         userId: null,
-        dni: '35123456',
-        firstName: 'Juan',
-        lastName: 'Pérez',
-        email: null,
-        category: null,
-        gender: null,
-        birthDate: null,
+        email: 'stored@example.com',
       });
-      prisma.user.create.mockResolvedValue({
-        id: 'user-1',
-        email: 'juan@example.com',
-      });
-      prisma.player.updateManyAndReturn.mockResolvedValue([
-        {
-          id: 'orphan-player',
-          firstName: 'Juan',
-          lastName: 'Pérez',
-          category: null,
-          gender: null,
-          createdAt: new Date('2026-01-01T00:00:00.000Z'),
-        },
-      ]);
-
-      const result = await service.register(createDto());
-
-      expect(result.outcome).toBe('claimed');
-      expect(result.player.id).toBe('orphan-player');
-      expect(prisma.player.create).not.toHaveBeenCalled();
-      expect(prisma.player.updateManyAndReturn).toHaveBeenCalledWith({
-        where: { id: 'orphan-player', userId: null },
-        data: expect.objectContaining({ userId: 'user-1' }) as unknown,
-      });
-    });
-
-    it('does not overwrite firstName/lastName nor a pre-existing email different from the one in the DTO', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-      prisma.player.findUnique.mockResolvedValue({
-        id: 'orphan-player',
-        userId: null,
-        dni: '35123456',
-        firstName: 'Juan Ignacio',
-        lastName: 'Pérez',
-        email: 'contacto-del-club@example.com',
-        category: null,
-        gender: null,
-        birthDate: null,
-      });
-      prisma.user.create.mockResolvedValue({
-        id: 'user-1',
-        email: 'juan@example.com',
-      });
-      prisma.player.updateManyAndReturn.mockResolvedValue([
-        {
-          id: 'orphan-player',
-          firstName: 'Juan Ignacio',
-          lastName: 'Pérez',
-          category: null,
-          gender: null,
-          createdAt: new Date('2026-01-01T00:00:00.000Z'),
-        },
-      ]);
-
-      await service.register(createDto());
-
-      const call = lastArgument<{ data: { email?: string } }>(
-        prisma.player.updateManyAndReturn,
-      );
-      expect(call.data.email).toBe('contacto-del-club@example.com');
-      // firstName/lastName ni siquiera se mandan en el update: el modelo no
-      // tiene ese campo en el `data`, así que no hay forma de que lo pisen.
-      expect(call.data).not.toHaveProperty('firstName');
-      expect(call.data).not.toHaveProperty('lastName');
-    });
-
-    it('fills empty fields of the orphan profile with the ones from the DTO', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-      prisma.player.findUnique.mockResolvedValue({
-        id: 'orphan-player',
-        userId: null,
-        dni: '35123456',
-        firstName: 'Juan',
-        lastName: 'Pérez',
-        email: null,
-        category: null,
-        gender: null,
-        birthDate: null,
-        dominantHand: null,
-        country: null,
-        province: null,
-        phone: null,
-        emergencyPhone: null,
-      });
-      prisma.user.create.mockResolvedValue({
-        id: 'user-1',
-        email: 'juan@example.com',
-      });
-      prisma.player.updateManyAndReturn.mockResolvedValue([
-        {
-          id: 'orphan-player',
-          firstName: 'Juan',
-          lastName: 'Pérez',
-          category: 'caballeros cuarta',
-          gender: 'male',
-          createdAt: new Date('2026-01-01T00:00:00.000Z'),
-        },
-      ]);
-
-      await service.register(
-        createDto({
-          category: 'caballeros cuarta',
-          gender: 'male',
-          dominantHand: 'left',
-          country: 'AR',
-          province: 'Buenos Aires',
-          phone: '+5492284123456',
-          emergencyPhone: '+542284654321',
-        }),
-      );
-
-      const call = lastArgument<{ data: Record<string, unknown> }>(
-        prisma.player.updateManyAndReturn,
-      );
-      expect(call.data).toMatchObject({
-        email: 'juan@example.com',
-        category: 'caballeros cuarta',
-        gender: 'male',
-        dominantHand: 'left',
-        country: 'AR',
-        province: 'Buenos Aires',
-        phone: '+5492284123456',
-        emergencyPhone: '+542284654321',
-      });
-    });
-
-    it('does not overwrite the profile data the club had already loaded', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-      prisma.player.findUnique.mockResolvedValue({
-        id: 'orphan-player',
-        userId: null,
-        dni: '35123456',
-        firstName: 'Juan',
-        lastName: 'Pérez',
-        email: null,
-        category: null,
-        gender: null,
-        birthDate: null,
-        dominantHand: 'right',
-        country: 'UY',
-        province: 'Montevideo',
-        phone: '+59899123456',
-        emergencyPhone: '+59899654321',
-      });
-      prisma.user.create.mockResolvedValue({
-        id: 'user-1',
-        email: 'juan@example.com',
-      });
-      prisma.player.updateManyAndReturn.mockResolvedValue([
-        {
-          id: 'orphan-player',
-          firstName: 'Juan',
-          lastName: 'Pérez',
-          category: null,
-          gender: null,
-          createdAt: new Date('2026-01-01T00:00:00.000Z'),
-        },
-      ]);
-
-      await service.register(
-        createDto({
-          dominantHand: 'left',
-          country: 'AR',
-          province: 'Buenos Aires',
-          phone: '+5492284123456',
-          emergencyPhone: '+542284654321',
-        }),
-      );
-
-      const call = lastArgument<{ data: Record<string, unknown> }>(
-        prisma.player.updateManyAndReturn,
-      );
-      expect(call.data).toMatchObject({
-        dominantHand: 'right',
-        country: 'UY',
-        province: 'Montevideo',
-        phone: '+59899123456',
-        emergencyPhone: '+59899654321',
-      });
-    });
-
-    it('returns 409 dni_has_account when it loses the race against a concurrent claim', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-      prisma.player.findUnique.mockResolvedValue({
-        id: 'orphan-player',
-        userId: null,
-        dni: '35123456',
-        firstName: 'Juan',
-        lastName: 'Pérez',
-        email: null,
-        category: null,
-        gender: null,
-        birthDate: null,
-      });
-      prisma.user.create.mockResolvedValue({
-        id: 'user-1',
-        email: 'juan@example.com',
-      });
-      // El guard `userId: null` del WHERE no afectó ninguna fila: otro
-      // claim ya lo tomó entre el findUnique y este update.
-      prisma.player.updateManyAndReturn.mockResolvedValue([]);
 
       await expect(service.register(createDto())).rejects.toMatchObject({
         status: 409,
         response: expect.objectContaining({
-          code: 'dni_has_account',
+          code: 'profile_claim_verification_required',
         }) as unknown,
       });
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(prisma.player.updateManyAndReturn).not.toHaveBeenCalled();
     });
   });
 
+  describe('organizer player directory', () => {
+    it('creates an ownerless global profile without credentials', async () => {
+      prisma.player.create.mockResolvedValue({
+        id: 'player-1',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        category: null,
+        gender: null,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      });
+      const dto = Object.assign(new CreateOrganizerPlayerDto(), {
+        email: ' ADA@Example.COM ',
+        dni: '35.123-456',
+        firstName: ' Ada ',
+        lastName: ' Lovelace ',
+      });
+
+      const result = await service.createForOrganizer(dto);
+
+      expect(result).toEqual({
+        id: 'player-1',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        category: null,
+        gender: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      expect(prisma.player.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          email: 'ada@example.com',
+          dni: '35123456',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+        }) as unknown,
+      });
+      expect(
+        lastArgument<{ data: Record<string, unknown> }>(prisma.player.create)
+          .data,
+      ).not.toHaveProperty('userId');
+    });
+
+    it('paginates a name lookup and never maps contact fields to the result', async () => {
+      prisma.player.findMany.mockResolvedValue([
+        {
+          id: '019aaa00-0000-7000-8000-000000000002',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          category: 'Open',
+          gender: 'female',
+          email: 'ada@example.com',
+          dni: '35123456',
+          phone: '+5492284123456',
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          id: '019aaa00-0000-7000-8000-000000000001',
+          firstName: 'Ada',
+          lastName: 'Byron',
+          category: null,
+          gender: null,
+          email: 'byron@example.com',
+          dni: '35123457',
+          phone: '+5492284123457',
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ]);
+      const query = Object.assign(new ListOrganizerPlayersDto(), {
+        q: 'Ada',
+        limit: 1,
+      });
+
+      const result = await service.listForOrganizer(query);
+
+      expect(prisma.player.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { firstName: { contains: 'Ada', mode: 'insensitive' } },
+            { lastName: { contains: 'Ada', mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { id: 'desc' },
+        take: 2,
+      });
+      expect(result).toEqual({
+        items: [
+          {
+            id: '019aaa00-0000-7000-8000-000000000002',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            category: 'Open',
+            gender: 'female',
+            createdAt: '2026-01-02T00:00:00.000Z',
+          },
+        ],
+        nextCursor: '019aaa00-0000-7000-8000-000000000002',
+      });
+    });
+  });
   it('rejects with 409 email_registered when a User with that email already exists', async () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'existing-user' });
 

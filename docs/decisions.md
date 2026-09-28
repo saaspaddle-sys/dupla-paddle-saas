@@ -14,6 +14,26 @@ Este archivo conserva decisiones históricas, no una lista de funcionalidades en
 | Límites de los PRs     | [PRs por paquete](#prs-vigente)     |
 | Identificadores        | [UUIDv7](#ids-vigentes)             |
 
+## 2026-09-14 - Checkout recurrente pendiente no altera la suscripción efectiva
+
+**Decisión**: el backend inicia suscripciones mensuales con Mercado Pago Preapproval. Cada intento queda correlacionado por una referencia opaca generada en el servidor y una fila subscription_checkouts; el cliente no envia precio, moneda, owner, suscripción ni credenciales.
+
+**Consecuencias**: mientras el checkout esta pendiente, subscriptions.plan, status y max_tournaments no cambian. Solo un webhook verificado puede activar o degradar la suscripción. La reserva local comienza en `recovery_required`; cualquier timeout, fallo de transporte, respuesta 2xx malformada o 4xx sin una condición de cuerpo documentada que pruebe que no se creó el preapproval conserva esa reserva y responde `billing_checkout_recovery_required`, evitando un segundo preapproval accidental. Hoy el adaptador no clasifica ningún 4xx de Mercado Pago como definitivo. Existe como maximo un checkout activo o recuperable por suscripción: repetir el mismo plan reutiliza su URL una vez persistida y pedir otro plan devuelve checkout_pending_for_another_plan. Solo se borra la correlación ante un rechazo explícitamente definitivo que demuestra que no se creó el preapproval, o ante una cancelación verificada.
+
+## 2026-09-14 — El email de Player es obligatorio para poder reclamar el perfil
+
+**Decisión**: `players.email` pasa a ser `NOT NULL` mediante una migración nueva. No hay datos de producción que conservar, por lo que se reemplaza la compatibilidad nullable prevista inicialmente para perfiles históricos. El registro público y el alta por organizador ya exigen email, así que ambos caminos satisfacen el invariante.
+
+**Consecuencia**: no existe una rama de recuperación para perfiles sin email. Un perfil sin `user_id` bloquea `POST /auth/register` con `409 profile_claim_verification_required`; el futuro flujo de claim debe verificar control del email ya guardado. Hasta que exista ese flujo, el contrato de registro solo puede devolver `outcome: "created"`: no anuncia ni produce `claimed`.
+
+## 2026-09-14 — Alta por organizador y reclamo seguro de perfiles globales
+
+**Decisión histórica (estado: supersedida por la entrada anterior)**: `POST /players` permite al staff autenticado de un club crear un `Player` global sin credenciales. En este diseño inicial, el endpoint exigía un email válido en su DTO mientras `players.email` permanecía nullable para perfiles históricos. La decisión vigente reemplazó esa compatibilidad: `players.email` es `NOT NULL`. El `club_id` se obtiene exclusivamente de `ClubScopeGuard` y autoriza la operación; nunca se persiste en `Player`.
+
+`GET /players` es la búsqueda paginada para ese mismo staff. Devuelve una proyección deliberada sin DNI, email, teléfonos ni contacto de emergencia. La clave de deduplicación sigue siendo únicamente el DNI y el índice único de la base resuelve carreras.
+
+**Reemplaza para los perfiles sin dueño** la regla histórica de auto-link por DNI de la entrada de 2026-08-11: un DNI no prueba identidad. `POST /auth/register` ahora responde `409 profile_claim_verification_required` sin crear un `User` ni modificar el perfil. Un flujo posterior debe demostrar control del email que ya está almacenado en el perfil; nunca puede usar un email suministrado por quien intenta reclamarlo. La entrega de email y el flujo de claim quedan fuera de este work unit.
+
 ## 2026-09-07 — Consultar y borrar el cuadro sin perder resultados
 
 `GET /tournaments/:tournamentId/bracket` devuelve el mismo DTO que el POST, leído del cuadro persistido y ordenado por ronda y posición. No vuelve a sortear. La lectura del scope y los partidos comparte una transacción `RepeatableRead`; un borrado concurrente no mezcla dos snapshots. Un torneo ajeno o inexistente devuelve `404 tournament_not_found`; uno propio sin cuadro devuelve `404 bracket_not_found`.
@@ -572,3 +592,13 @@ Tres riesgos conocidos, anotados acá para no perderlos de vista mientras se def
 ## 2026-07-16 — Hosting: pendiente
 
 **Estado**: decisión diferida a propósito hasta acercarse al primer deploy. No bloquea el desarrollo.
+
+## 2026-09-15 — Activación inicial por cobro canónico de Mercado Pago
+
+**Contexto**: el checkout recurrente crea una autorización (`preapproval`), pero esa autorización no prueba que una cuota haya sido cobrada. El redirect del navegador tampoco es una fuente confiable: puede abandonarse, falsificarse o llegar antes que el cobro. La fase 1 necesita habilitar el plan pago solamente después de un hecho de cobro verificable por el servidor.
+
+**Decisión**: el webhook de Mercado Pago valida `x-signature` y `x-request-id` contra el secreto del servidor, persiste primero la notificación y luego vuelve a consultar la factura canónica `subscription_authorized_payment` con el access token. Solo una factura canónica `approved` que coincida con el `preapproval`, `external_reference`, importe, moneda y checkout reservado en estado `pending` activa en una transacción serializable el plan, estado y cuota. El `notification_url`, importes y cuotas son de servidor; el frontend no participa en la activación.
+
+**Consecuencias**: reintentos y entregas simultáneas son idempotentes por la bitácora `payment_events` y el estado del checkout; una caída después de persistir el evento se retoma al reintentar. Una autorización, payload adulterado, referencia/importe/moneda distintos, checkout expirado o factura no aprobada nunca habilitan cuota. Las reservas históricas sin términos verificables se expiran por migración. Renovaciones fallidas, cancelaciones, reembolsos, contracargos, períodos de gracia y bajas quedan fuera de este work unit: requieren su propia decisión comercial.
+
+**Fuentes oficiales**: [Webhooks de Mercado Pago](https://www.mercadopago.com.ar/developers/es/docs/checkout-bricks/additional-content/your-integrations/notifications/webhooks) y [consulta de pago autorizado](https://www.mercadopago.com.ar/developers/es/reference/online-payments/subscriptions/get-authorized-payment/get).

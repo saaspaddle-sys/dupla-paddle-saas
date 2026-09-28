@@ -11,6 +11,7 @@ import { HealthModule } from './health/health.module';
 import { PlayersModule } from './players/players.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TournamentsModule } from './tournaments/tournaments.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { TournamentsModule } from './tournaments/tournaments.module';
     // funcional.
     ClubsModule,
     TournamentsModule,
+    SubscriptionsModule,
   ],
   providers: [
     // Registrados acá como providers (APP_PIPE/APP_FILTER) y no con

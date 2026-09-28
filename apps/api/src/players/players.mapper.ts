@@ -1,5 +1,6 @@
 import { PlayerModel, UserModel } from '../generated/prisma/models';
 import { RegisterPlayerResponseDto } from './dto/register-player-response.dto';
+import { OrganizerPlayerResponseDto } from './dto/organizer-player-response.dto';
 
 /**
  * Función pura: entidad -> DTO de respuesta. A propósito no se usa
@@ -11,7 +12,7 @@ import { RegisterPlayerResponseDto } from './dto/register-player-response.dto';
 export function toRegisterPlayerResponse(
   user: UserModel,
   player: PlayerModel,
-  outcome: 'created' | 'claimed',
+  outcome: 'created',
 ): RegisterPlayerResponseDto {
   return {
     outcome,
@@ -27,5 +28,18 @@ export function toRegisterPlayerResponse(
       gender: player.gender,
       createdAt: player.createdAt.toISOString(),
     },
+  };
+}
+
+export function toOrganizerPlayerResponse(
+  player: PlayerModel,
+): OrganizerPlayerResponseDto {
+  return {
+    id: player.id,
+    firstName: player.firstName,
+    lastName: player.lastName,
+    category: player.category,
+    gender: player.gender,
+    createdAt: player.createdAt.toISOString(),
   };
 }

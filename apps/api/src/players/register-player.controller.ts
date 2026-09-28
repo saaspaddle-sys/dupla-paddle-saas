@@ -38,7 +38,7 @@ export class RegisterPlayerController {
   @ApiCreatedResponse({ type: RegisterPlayerResponseDto })
   @ApiConflictResponse({
     description:
-      'El email ya tiene cuenta (`email_registered`), o el DNI ya está asociado a una (`dni_has_account`).',
+      'El email ya tiene cuenta (`email_registered`), el DNI ya está asociado a una (`dni_has_account`) o el perfil sin dueño requiere verificación de su email almacenado (`profile_claim_verification_required`).',
   })
   @ApiTooManyRequestsResponse({
     description: 'Demasiados intentos (`too_many_requests`).',

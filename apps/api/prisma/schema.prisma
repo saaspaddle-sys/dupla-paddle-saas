@@ -39,7 +39,7 @@ model Player {
   dni          String        @unique
   firstName    String        @map("first_name")
   lastName     String        @map("last_name")
-  email        String?
+  email        String
   category     String?
   gender       PlayerGender?
   birthDate    DateTime?     @map("birth_date") @db.Date
@@ -141,6 +141,27 @@ model Subscription {
   // lectura: mientras el cobro sea manual hace falta poder dar excepciones
   // a una cuenta puntual sin inventar un plan nuevo.
   maxTournaments Int      @map("max_tournaments")
+  /// One provider mandate is the source of truth for recurring charges. A
+  /// checkout is only an onboarding attempt and must never be used as that
+  /// identity after its first payment.
+  providerPreapprovalId String?   @unique @map("provider_preapproval_id")
+  providerStatus        String?   @map("provider_status")
+  /// Durable provider-side boundary: invoices paid on or before this instant
+  /// still belong to the already-paid period, but must not resume renewal.
+  pausedAt              DateTime? @map("paused_at") @db.Timestamptz(3)
+  currentPeriodEndsAt   DateTime? @map("current_period_ends_at") @db.Timestamptz(3)
+  /// A scheduled downgrade is only applied after an approved renewal matches
+  /// this immutable quote. Until then the paid Pro entitlement remains effective.
+  pendingPlan           SubscriptionPlan? @map("pending_plan")
+  pendingPlanAmount     Decimal?          @map("pending_plan_amount") @db.Decimal(12, 2)
+  pendingPlanCurrency   String?           @map("pending_plan_currency") @db.VarChar(3)
+  pendingPlanConfirmedAt DateTime?        @map("pending_plan_confirmed_at") @db.Timestamptz(3)
+  pendingPlanEffectiveAt DateTime? @map("pending_plan_effective_at") @db.Timestamptz(3)
+  pendingPlanPaidAt DateTime? @map("pending_plan_paid_at") @db.Timestamptz(3)
+  /// The last verified recurring charge establishes the proration window.
+  currentPeriodStartedAt DateTime? @map("current_period_started_at") @db.Timestamptz(3)
+  currentPeriodAmount Decimal? @map("current_period_amount") @db.Decimal(12, 2)
+  currentPeriodCurrency String? @map("current_period_currency") @db.VarChar(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -149,8 +170,29 @@ model Subscription {
   // práctica — no se puede borrar un usuario que tenga club.
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   paymentEvents PaymentEvent[]
+  checkouts     SubscriptionCheckout[]
+  upgrades      SubscriptionUpgrade[]
+  canceledPreapprovals SubscriptionPreapprovalTombstone[]
 
   @@map("subscriptions")
+}
+
+/// A cancelled provider mandate remains auditable after the live subscription
+/// forgets it. Late invoices for this id are terminal no-ops, not indefinitely
+/// retryable events.
+model SubscriptionPreapprovalTombstone {
+  id                    String   @id @default(uuid(7)) @db.Uuid
+  provider              PaymentProvider
+  providerPreapprovalId String   @map("provider_preapproval_id")
+  subscriptionId        String   @map("subscription_id") @db.Uuid
+  canceledAt            DateTime @default(now()) @map("canceled_at") @db.Timestamptz(3)
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  // PostgreSQL shortened the original physical name to 63 bytes. Pin it so
+  // Prisma does not propose a rename on every existing database.
+  @@unique([provider, providerPreapprovalId], map: "subscription_preapproval_tombstones_provider_provider_preapprov")
+  @@map("subscription_preapproval_tombstones")
 }
 
 /// `free` es el plan de entrada de todo club: una llave activa, suficiente
@@ -169,6 +211,7 @@ enum SubscriptionPlan {
 enum SubscriptionStatus {
   pending
   active
+  past_due
   canceled
 
   @@map("subscription_status")
@@ -221,6 +264,10 @@ model PaymentEvent {
 
   receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
   processedAt DateTime? @map("processed_at") @db.Timestamptz(3)
+  /// A retryable delivery remains unprocessed. Persisting why it could not be
+  /// correlated makes reconciliation observable without acknowledging it as a
+  /// terminal no-op.
+  lastErrorAt DateTime? @map("last_error_at") @db.Timestamptz(3)
 
   /// A qué suscripción se aplicó. Nullable: la fila nace antes de que el
   /// evento se resuelva, y una notificación puede no corresponder a
@@ -232,6 +279,7 @@ model PaymentEvent {
   /// `SELECT` previo: bajo concurrencia dos reintentos simultáneos leerían
   /// ambos "no existe" y aplicarían los dos.
   @@unique([provider, externalId])
+  @@unique([provider, type, resourceId])
   /// El efecto se aplica sobre el recurso, no sobre la notificación: MP
   /// manda varias notificaciones distintas sobre el mismo pago
   /// (`payment.created`, `payment.updated`), así que el handler también
@@ -522,4 +570,83 @@ model MatchSet {
   @@unique([matchId, setNumber])
   @@index([clubId])
   @@map("match_sets")
+}
+
+model SubscriptionCheckout {
+  id String @id @default(uuid(7)) @db.Uuid
+  subscriptionId String @map("subscription_id") @db.Uuid
+  provider PaymentProvider @default(mercado_pago)
+  reference String @unique
+  targetPlan SubscriptionPlan @map("target_plan")
+  /// Precio congelado al reservar el checkout. No se vuelve a leer desde
+  /// configuraciÃ³n al procesar un cobro, porque un cambio de precios no puede
+  /// reinterpretar una autorizaciÃ³n ya emitida.
+  amount Decimal @db.Decimal(12, 2)
+  currency String
+  providerPreapprovalId String? @unique @map("provider_preapproval_id")
+  providerStatus String? @map("provider_status")
+  // A reservation starts recoverable so an unknown provider outcome cannot
+  // accidentally create a second recurring preapproval for the same plan.
+  state CheckoutState @default(recovery_required)
+  initPoint String? @map("init_point")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  @@index([subscriptionId, targetPlan])
+  @@map("subscription_checkouts")
+}
+
+/// A one-time paid Basic-to-Pro change. The provider payment and recurring
+/// mandate update are separate effects; this row survives either failure.
+model SubscriptionUpgrade {
+  id String @id @default(uuid(7)) @db.Uuid
+  subscriptionId String @map("subscription_id") @db.Uuid
+  reference String @unique
+  preferenceId String? @unique @map("preference_id")
+  checkoutUrl String? @map("checkout_url")
+  paymentId String? @unique @map("payment_id")
+  preapprovalId String @map("preapproval_id")
+  amount Decimal @db.Decimal(12, 2)
+  recurringAmount Decimal @map("recurring_amount") @db.Decimal(12, 2)
+  currency String @db.VarChar(3)
+  periodStartedAt DateTime @map("period_started_at") @db.Timestamptz(3)
+  periodEndsAt DateTime @map("period_ends_at") @db.Timestamptz(3)
+  state UpgradeState @default(creating)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  @@index([subscriptionId, state])
+  @@map("subscription_upgrades")
+}
+
+enum UpgradeState {
+  creating
+  pending
+  paid
+  applied
+  review_required
+
+  @@map("upgrade_state")
+}
+
+/// Cross-instance lease for the in-process Nest reconciliation runner. The
+/// token means a stale instance cannot release another instance's lease.
+model BillingJobLock {
+  name        String   @id
+  ownerToken  String   @map("owner_token")
+  lockedUntil DateTime @map("locked_until") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("billing_job_locks")
+}
+
+
+enum CheckoutState {
+  pending
+  recovery_required
+  completed
+  expired
+
+  @@map("checkout_state")
 }

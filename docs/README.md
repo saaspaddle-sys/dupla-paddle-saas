@@ -9,6 +9,9 @@ Punto de entrada a la documentación del producto y del equipo. Cada documento t
 | Entender el producto y sus fases                | [Brief de producto](./product-brief.md)                                                      |
 | Diseñar o consumir un contrato HTTP             | [Convenciones de API](./api-conventions.md) y [OpenAPI versionado](../apps/api/openapi.json) |
 | Entender entidades y relaciones                 | [Modelo de datos](./data-model.md)                                                           |
+| Entender la integración de Mercado Pago         | [Mercado Pago de punta a punta](./mercado-pago-integration.md)                               |
+| Coordinar entregas entre backend y frontend     | [Coordinación backend/frontend](./frontend-backend-coordination.md)                          |
+| Evaluar el cierre de la Fase 1                  | [Brechas de entrega de la Fase 1](./phase-1-delivery-gap.md)                                 |
 | Preparar Postgres o trabajar con migraciones    | [Guía de base de datos](./database.md)                                                       |
 | Preparar una contribución                       | [Reglas de trabajo](./workflow.md) y [comandos Git](./git-guide.md)                          |
 | Usar los agentes del repositorio en Claude Code | [Guía de agentes](./agents.md)                                                               |

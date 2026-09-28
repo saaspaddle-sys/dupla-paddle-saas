@@ -46,7 +46,7 @@ El plan `free` permite que el club pruebe el producto con una llave activa; cuan
 - **Checkout de upgrade `free → basic`/`pro`** desde el panel del club. Pasarela: Mercado Pago (mercado inicial, Argentina — decidido el 2026-07-16).
 - **La confirmación del pago llega por webhook, y es lo único que activa el plan.** Mueve `plan`, `max_tournaments` y `status` **juntos**: un upgrade a medias —cuota sin cobro, o cobro sin cuota— es el modo de falla a evitar, y es la razón por la que hoy la cuota no se puede tocar sola.
 - **`GET /subscriptions/me` y el checkout entran como recurso propio**, sin sacar el objeto `subscription` que ya viaja embebido en `GET /clubs/me`. Es aditivo y no rompe al frontend existente (decidido el 2026-08-25).
-- **Verificación del club al activar.** Hoy nada comprueba que quien creó un club tenga relación con el club real, y el slug es único global. Cobrar es el momento natural para exigir esa prueba: es donde aparece una contraparte con identidad, y es lo que le pone costo real a acaparar un slug ajeno.
+- **El pago confirmado identifica al club como oficial.** La confirmación validada de Mercado Pago es una señal implícita suficiente; no se requiere una verificación adicional del club para activar el plan pago.
 
 Las tres preguntas que faltaban, ya resueltas (2026-09-03):
 

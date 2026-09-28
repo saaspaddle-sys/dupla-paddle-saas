@@ -213,6 +213,7 @@ describe('Tournaments and teams (e2e)', () => {
         dni,
         firstName: 'Jugador',
         lastName: `Bracket ${index + 1}`,
+        email: `bracket-${dni}@example.test`,
       })),
     });
 
