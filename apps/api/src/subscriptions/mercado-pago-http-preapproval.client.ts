@@ -173,6 +173,18 @@ export class MercadoPagoHttpPreapprovalClient implements MercadoPagoPreapprovalC
         code: 'billing_not_configured',
         message: 'billing is not configured',
       });
+
+    // Log de solicitud para debugging
+    this.logger.log({
+      event: 'mercado_pago_preapproval_create_request',
+      payerEmail: input.payerEmail,
+      amount: input.amount,
+      currencyId: input.currencyId,
+      reason: input.reason,
+      reference: input.reference,
+      backUrl: input.backUrl,
+    });
+
     let response: Response;
     try {
       response = await fetch('https://api.mercadopago.com/preapproval', {
@@ -209,6 +221,8 @@ export class MercadoPagoHttpPreapprovalClient implements MercadoPagoPreapprovalC
       this.logger.warn({
         event: 'mercado_pago_preapproval_create_rejected',
         ...rejection.diagnostic,
+        payerEmail: input.payerEmail,
+        requestedAmount: input.amount,
       });
       if (rejection.definitive) throw new DefinitivePreapprovalRejectionError();
       // Mercado Pago's HTTP status alone does not prove whether it created a

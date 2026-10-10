@@ -61,6 +61,7 @@ export default function infoPlanSubscription({ data }: Props) {
 
         {/* Canchas */}
         <div>
+          {/*
           <div className="flex justify-between text-xs font-semibold mb-1">
             <span className="text-gray-400">Canchas En Uso</span>
             <span className="text-white">
@@ -81,10 +82,11 @@ export default function infoPlanSubscription({ data }: Props) {
               }}
             />
           </div>
+         */}
         </div>
       </div>
 
-      {/* Botón Upgrade si no es Pro */}
+      {/* Botón Upgrade si NO es Pro */}
       {data.subscription !== "pro" && (
         <button className="w-full bg-padel-green hover:bg-[#b8e600] text-deep-onyx font-bold text-xs py-2 rounded-lg transition-all cursor-pointer">
           Mejorar a Plan Pro
