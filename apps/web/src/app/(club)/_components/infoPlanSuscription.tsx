@@ -61,7 +61,7 @@ export default function infoPlanSubscription({ data }: Props) {
 
         {/* Canchas */}
         <div>
-         {/*
+          {/*
           <div className="flex justify-between text-xs font-semibold mb-1">
             <span className="text-gray-400">Canchas En Uso</span>
             <span className="text-white">
